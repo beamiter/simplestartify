@@ -1,0 +1,386 @@
+*simplestartify.txt*  A randomly styled start screen for Vim 9
+                                                        *simplestartify*
+
+Author:  beamiter
+License: MIT
+
+==============================================================================
+CONTENTS                                             *simplestartify-contents*
+
+    1. Introduction .............. |simplestartify-introduction|
+    2. Requirements .............. |simplestartify-requirements|
+    3. Styles and random draws ... |simplestartify-styles|
+    4. Dashboard keys ............ |simplestartify-keys|
+    5. Options ................... |simplestartify-options|
+    6. Commands .................. |simplestartify-commands|
+    7. Session safety ............ |simplestartify-sessions|
+    8. Compatibility and events . |simplestartify-compatibility|
+    9. Plug mappings ............. |simplestartify-mappings|
+   10. Highlights ................ |simplestartify-highlights|
+   11. Testing and limits ........ |simplestartify-testing|
+
+==============================================================================
+1. INTRODUCTION                                  *simplestartify-introduction*
+
+SimpleStartify replaces an empty Vim buffer with a dashboard of recent files,
+saved sessions and common actions.  In its default "random" mode, each entry
+to the dashboard draws one of four layouts and avoids immediately repeating
+the current eligible layout.
+
+The dashboard is a scratch buffer with 'filetype' set to "startify", so rules
+written for vim-startify continue to apply.  There is no external program,
+daemon or other plugin.
+
+==============================================================================
+2. REQUIREMENTS                                  *simplestartify-requirements*
+
+Vim 9.1 or newer.  SimpleStartify is Vim9script only.
+
+Install it with a plugin manager: >
+
+    Plug 'beamiter/simplestartify'
+<
+or place the repository in a package directory under 'runtimepath'.  There is
+nothing to compile for installation.
+
+==============================================================================
+3. STYLES AND RANDOM DRAWS                            *simplestartify-styles*
+
+Four layouts are built in, in this order:
+
+    minimal     compact, left-aligned sections          minimum width 16
+    boxed       a framed dashboard                      minimum width 28
+    centered    centered ASCII banner and entries       minimum width 24
+    terminal    a command-line transcript               minimum width 22
+
+The minimum widths are used only to form the random candidate pool.  When no
+configured style fits, "minimal" is the safe fallback.  A style explicitly
+passed to |:SimpleStartify| is still rendered at narrower widths.  Lines are
+measured with |strdisplaywidth()| and shortened with an ellipsis as needed.
+
+The default value of |g:simplestartify_style| is "random".  Each automatic or
+manual entry to the dashboard therefore draws from
+|g:simplestartify_styles|.  With
+|g:simplestartify_avoid_repeat| enabled and at least two eligible styles, the
+current style is removed from that draw.  On an active dashboard,
+|:SimpleStartifyNextStyle| always uses a random draw, even when a fixed
+default style is configured.
+
+|:SimpleStartifyRefresh| updates the data without changing the style.
+Resizing reflows the same style.  Both operations try to keep the same action
+selected.
+
+==============================================================================
+4. DASHBOARD KEYS                                      *simplestartify-keys*
+
+    1 ... 9            open the corresponding recent readable file
+    displayed letter    load the corresponding session
+    n                   open a new empty buffer
+    r                   draw another random UI style
+    q                   quit Vim
+
+    <CR>                run the selected action
+    double left click   select and run an action
+    j, k                next / previous action
+    <Tab>, <S-Tab>      next / previous action
+    R                   refresh data, keeping style and selection
+    d                   confirm and delete the selected session
+
+Recent entries are taken from |v:oldfiles|.  Unreadable files and duplicate
+absolute paths are skipped.  Sessions are ordered by modification time,
+newest first.
+
+Opening a recent file may change the window-local directory; see
+|g:simplestartify_change_to_vcs_root| and
+|g:simplestartify_change_to_dir|.
+
+==============================================================================
+5. OPTIONS                                           *simplestartify-options*
+
+Set options before the plugin loads.  Boolean options accept a Boolean or a
+Number.  Invalid values use the stated default.
+
+                                               *g:simplestartify_auto_open*
+Open the dashboard at |VimEnter|.  Default 1.  It opens only with no file
+arguments, outside Insert mode, when the current buffer is modifiable,
+unnamed, unmodified, normal, and contains one empty line.
+
+                                                   *g:simplestartify_style*
+"random" (default), "minimal", "boxed", "centered", or "terminal".  An
+unknown string reports an error and draws a random eligible style.
+
+                                                  *g:simplestartify_styles*
+Candidate styles for random mode.  Default: >
+
+    ['minimal', 'boxed', 'centered', 'terminal']
+<
+Unknown and duplicate names are discarded during startup normalization.  If
+the normalized list is empty, all four defaults are restored.  At draw time,
+styles too wide for the current window (as reported by |winwidth()|) are left
+out; if that leaves no candidate, "minimal" is used.
+
+                                             *g:simplestartify_avoid_repeat*
+Avoid the current style on the next random draw when the pool has more than
+one member.  Default 1.
+
+                                              *g:simplestartify_recent_count*
+Maximum recent files to show.  Default 7, clamped to 0..9 because the entries
+use the keys 1..9.
+
+                                             *g:simplestartify_session_count*
+Maximum sessions to show.  Default 4, normalized to the range 0..13.  Each
+session's non-conflicting shortcut letter is displayed beside it.
+
+                                               *g:simplestartify_session_dir*
+Directory containing session files.  Default "~/.vim/session".  See
+|simplestartify-sessions| for validation and the trust boundary.
+
+                                       *g:simplestartify_session_persistence*
+Automatically rewrite the active managed session at |VimLeavePre| and before
+|:SLoad| switches to another session.  Default 0.  This never adopts or writes
+a session outside |g:simplestartify_session_dir|.  Explicit |:SClose| always
+saves the active managed session regardless of this option.
+
+                                        *g:simplestartify_change_to_vcs_root*
+After opening a recent file, use |:lcd| to change to its nearest Git root.
+Both a .git directory and a .git file are recognized.  Default 0.
+
+                                              *g:simplestartify_change_to_dir*
+After opening a recent file, use |:lcd| to change to its directory.  Default
+0.  When both directory options are enabled, a found Git root wins; otherwise
+this option supplies the fallback.
+
+==============================================================================
+6. COMMANDS                                         *simplestartify-commands*
+
+                                                        *:SimpleStartify*
+:SimpleStartify [style]
+        Open the dashboard.  [style] may be "random" or one of the four names
+        in |simplestartify-styles|.  With no argument, use the configured
+        style.  A modified buffer is not replaced while 'hidden' is off.
+
+                                                 *:SimpleStartifyRefresh*
+:SimpleStartifyRefresh
+        Re-read recent files and sessions, preserving the current style and
+        selected action when possible.  Opens the dashboard when run outside
+        it.
+
+                                               *:SimpleStartifyNextStyle*
+:SimpleStartifyNextStyle
+        On the dashboard, make another eligible random draw, preserving the
+        selected action when possible.  Repeat avoidance determines whether
+        the result must differ.  Outside the dashboard, open it using the
+        configured style.
+
+                                                  *:SimpleStartifyHealth*
+:SimpleStartifyHealth
+        Echo the styles currently eligible at this width and the resolved
+        session directory.  The result is also stored in
+        |g:simplestartify_health_last| as a dictionary with "ok", "styles",
+        "session_dir", and "session_writable" entries.
+
+                                      *g:simplestartify_health_last*
+The dictionary most recently produced by |:SimpleStartifyHealth|.  The
+"session_writable" member is true only when the directory already exists and
+is writable; saving can still create a valid absent directory.
+
+                                                               *:Startify*
+:Startify
+        Compatibility alias for |:SimpleStartify| with no argument.
+
+                                                                  *:SSave*
+:SSave[!] [name]
+        Save a session.  Without [name], prompt for it.  Refuse to replace an
+        existing session unless ! is supplied.
+
+                                                                  *:SLoad*
+:SLoad[!] [name]
+        With [name], load that session.  Without !, refuse when any listed
+        buffer is modified; ! permits those buffers to be discarded.
+
+        With neither [name] nor !, prompt with session-name completion.  Bare
+        :SLoad! is deliberately different: do not prompt, and restore the
+        session recorded by |simplestartify-last-session|.  It reports an
+        error when there is no usable last session.  See
+        |simplestartify-sessions| before loading any session file.
+
+                                                                *:SDelete*
+:SDelete[!] [name]
+        Delete a session.  Without [name], prompt with completion.  The
+        command refuses deletion unless ! is supplied.
+
+                                                                 *:SClose*
+:SClose[!]
+        Save the current managed session regardless of
+        |g:simplestartify_session_persistence|, clear |v:this_session|, delete
+        the listed buffers, and open the dashboard.  Without !, refuse when a
+        listed buffer is modified.  A missing, non-regular, unreadable, or
+        unwritable managed session, or any save failure, aborts the close.
+
+==============================================================================
+7. SESSION SAFETY                                  *simplestartify-sessions*
+
+Session operations fail closed around one configured directory:
+
+- A session name must be a single basename.  Empty names, ".", "..",
+  absolute paths, '/', '\', carriage returns, newlines, and names beginning
+  with the reserved ".simplestartify-" prefix are rejected.
+- The expanded session directory must resolve to an absolute path other than
+  the filesystem root.  It is created recursively with mode 0700 when absent
+  and must be writable before a save proceeds.
+- Atomic session and last-pointer writes allocate a previously nonexistent
+  hidden ".simplestartify-tmp-*" path inside the configured directory and
+  rename it into place.  Legal session names cannot start with the reserved
+  ".simplestartify-" prefix, so they cannot collide with these paths.  Failure
+  removes the temporary file and leaves an existing target in place.  A
+  crash-leftover temporary remains hidden from the session list.
+- The dashboard list accepts only readable regular files.  Every
+  ".simplestartify-*" internal file and the legacy "__LAST__" entry are
+  excluded, so neither metadata nor migration state consumes a shortcut.
+- |:SSave| needs ! to overwrite an existing regular file.  A directory,
+  symlink, or other non-file target is refused even with !.  |:SDelete| needs
+  ! to delete.  The "d" dashboard mapping asks for interactive confirmation.
+- Automatic persistence is disabled by default.  When enabled, it runs at
+  |VimLeavePre| and before |:SLoad| switches sessions.  It considers only a
+  |v:this_session| whose direct parent is the configured directory; sessions
+  elsewhere are ignored.
+- |:SClose| is explicit rather than automatic.  It always rewrites the active
+  managed session even when |g:simplestartify_session_persistence| is 0.
+- Whenever such a rewrite is due, the managed path must still name an
+  existing, readable, writable regular file.  If it disappeared, was replaced
+  by a directory or symlink, became unreadable/unwritable, or cannot be saved,
+  pre-load persistence and |:SClose| report an error and abort rather than
+  silently continuing.
+- While making a session, "options" is removed from 'sessionoptions'.  The
+  original option value and |v:this_session| are restored after a failed save.
+- Before a load deletes buffers, the current session layout is snapshotted to
+  a temporary session.  If the requested session throws while being sourced,
+  that snapshot is sourced and the previous |v:this_session| is restored.  A
+  failed persistence write or failed snapshot aborts the load.
+
+A session file is Vimscript.  |:SLoad| sources it; session files therefore
+belong to the same trust boundary as vimrc.  Load only files you trust.  The
+rollback restores session layout, not arbitrary side effects from hostile
+Vimscript that ran before an error.
+
+When automatic persistence is enabled, |:SLoad| first saves the current
+managed session and then force-deletes each listed buffer.  |:SClose| always
+performs that save before the same explicit listed-buffer delete pass.
+Without !, both commands first refuse when a listed buffer is modified.  Their
+bang forms explicitly allow those changes to be discarded.  Unlisted buffers
+are not included in the pass.
+
+After a successful load the plugin sets |v:this_session| and emits
+|simplestartify-session-loaded|.
+
+LAST SESSION                                     *simplestartify-last-session*
+
+After a successful save or load of an ordinary session, SimpleStartify tries
+to atomically record the session basename in ".simplestartify-last" inside the
+configured directory.  The pointer itself must be a regular readable file;
+its contents must pass the same basename validation as a command argument and
+ultimately name a readable regular session.  A pointer-update error is
+reported without undoing the save or load that already succeeded.
+
+Bare |:SLoad| with ! uses this pointer without opening a prompt, and ! also
+permits modified listed buffers to be discarded.  When neither the pointer
+nor a supported legacy entry is usable, the command reports that there is no
+last session.
+
+For migration, when the new pointer has no usable entry, bare :SLoad! also
+recognizes vim-startify's historical "__LAST__".  A regular file is loaded as
+the legacy last session.  A symlink is followed only when it resolves to a
+readable regular file directly inside the configured session directory; a
+successful load then records the target under the new pointer.  "__LAST__" is
+always omitted from the dashboard and completion list.
+
+==============================================================================
+8. COMPATIBILITY AND EVENTS                 *simplestartify-compatibility*
+
+The dashboard uses 'filetype' "startify".  The commands |:Startify|,
+|:SSave|, |:SLoad|, |:SDelete| and |:SClose| preserve vim-startify's familiar
+surface, with an added safety bang on |:SClose|.
+
+For every option documented in |simplestartify-options|, the same suffix under
+g:startify_ is read when its g:simplestartify_ form is unset.  For example,
+g:startify_session_dir is the fallback for
+|g:simplestartify_session_dir|.  The new name always takes precedence.
+
+If neither *_auto_open form is set, automatic opening is the inverse of
+g:simplestartify_disable_at_vimenter, falling back in turn to
+g:startify_disable_at_vimenter.  This preserves the old disable-at-VimEnter
+convention.
+
+The plugin sets g:loaded_startify so a later-loaded vim-startify does not add
+a second VimEnter hook when both installations remain on 'runtimepath' during
+migration.
+
+Bare |:SLoad| with ! implements vim-startify's "load last" behavior without
+showing its historical "__LAST__" entry; see |simplestartify-last-session|.
+
+The following |User| events are emitted:
+
+    SimpleStartifyReady             after the dashboard is rendered
+                                      *simplestartify-ready*
+    Startified                      after the dashboard is rendered
+    StartifyReady                   after the dashboard is rendered
+    SimpleStartifySessionLoaded     after a session is sourced successfully
+                                      *simplestartify-session-loaded*
+
+The three ready events are emitted in the order shown on every successful
+open.  They use <nomodeline>.
+
+==============================================================================
+9. PLUG MAPPINGS                                   *simplestartify-mappings*
+
+<Plug>(simplestartify-open)              *<Plug>(simplestartify-open)*
+        Open the dashboard.
+
+<Plug>(simplestartify-refresh)           *<Plug>(simplestartify-refresh)*
+        Refresh the dashboard.
+
+<Plug>(simplestartify-next-style)        *<Plug>(simplestartify-next-style)*
+        Draw another style.
+
+No user-facing global key is claimed automatically.
+
+==============================================================================
+10. HIGHLIGHTS                                    *simplestartify-highlights*
+
+Override any group after the plugin loads.  Default links are shown in
+parentheses.
+
+    SimpleStartifyHeader             generic header                 (Title)
+    SimpleStartifyHeaderMinimal      minimal header            (Identifier)
+    SimpleStartifyHeaderBoxed        boxed header                   (Title)
+    SimpleStartifyHeaderCentered     centered header             (Constant)
+    SimpleStartifyHeaderTerminal     terminal header               (String)
+    SimpleStartifySection            section heading            (Statement)
+    SimpleStartifyEntry              selectable entry              (Normal)
+    SimpleStartifyKey                [key] marker                  (Special)
+    SimpleStartifyMuted              empty-state text              (Comment)
+    SimpleStartifyFooter             help footer                   (Comment)
+
+The links are re-established on |ColorScheme| with |:highlight-default|, so a
+colorscheme or vimrc may define any of them explicitly.
+
+==============================================================================
+11. TESTING AND LIMITS                              *simplestartify-testing*
+
+Run the complete local quality gate from the repository root: >
+
+    make check
+<
+It compiles every Vim9 def and runs the smoke, UI/width, random-choice, and
+session-safety test scripts.
+
+Limits:
+
+- Recent files come only from |v:oldfiles| and must still be readable.
+- Only Git (.git directory or file) is recognized as a VCS root.
+- Startup normalization clamps recent files to nine and sessions to thirteen,
+  matching the documented shortcut capacity.
+- Session files are sourced Vimscript, not a data-only format; see
+  |simplestartify-sessions|.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

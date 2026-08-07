@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: simplestartify-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vim:
+    name: Vim 9.1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Vim
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes vim-nox
+          vim --version
+
+      - name: Run the quality gate
+        run: make check
+
+      - name: Validate help tags
+        run: >-
+          vim -Nu NONE -n -i NONE -es
+          -c 'set nomore'
+          -c 'helptags doc'
+          -c 'qa!'
