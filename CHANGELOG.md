@@ -71,6 +71,10 @@ All notable changes to SimpleStartify are documented here.
   matched nothing, so the shadowed normal-mode motion became a silent no-op
   for the life of the buffer. Only keys the dashboard installed are removed,
   so a user's own `FileType startify` mappings are untouched.
+- Fixed `g:simplestartify_mru_max = 0` disabling the cap instead of keeping no
+  paths. The documented lower bound of the range meant "unbounded", so the
+  in-session record and the cache written at `VimLeavePre` grew without limit
+  for exactly the user who asked for the smallest possible store.
 - Moved the atomic temp-then-rename primitive into
   `autoload/simplestartify/atomic.vim` so the session store and the
   recent-files cache share one implementation and one reserved namespace.

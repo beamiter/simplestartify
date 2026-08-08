@@ -64,11 +64,15 @@ def Newest(left: dict<any>, right: dict<any>): number
 enddef
 
 def Capped(items: list<dict<any>>): list<dict<any>>
+  # The cap counts kept paths, and plugin/ normalizes it into 0..5000, so 0 is
+  # a configured value meaning "keep none".  Treating it as "no cap" inverted
+  # the smallest request into an unbounded one: neither `entries` nor the cache
+  # written at VimLeavePre would ever be truncated again.
   var maximum = Maximum()
-  if maximum > 0 && len(items) > maximum
-    return items[0 : maximum - 1]
+  if maximum <= 0
+    return []
   endif
-  return items
+  return len(items) > maximum ? items[0 : maximum - 1] : items
 enddef
 
 def FromDisk(): list<dict<any>>

@@ -217,7 +217,9 @@ in every new Vim.
                                                   *g:simplestartify_mru_max*
 Maximum number of paths kept in that record.  Default 200, normalized to the
 range 0..5000.  This is the store size, not the number of dashboard entries;
-|g:simplestartify_recent_count| still limits what is displayed.
+|g:simplestartify_recent_count| still limits what is displayed.  0 keeps no
+paths at all - it is the way to record nothing while leaving |v:oldfiles|
+alone, and never means "unbounded".
 
                                                  *g:simplestartify_mru_file*
 Path of the record.  Default "$XDG_STATE_HOME/simplestartify/mru" when

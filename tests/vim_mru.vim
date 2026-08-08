@@ -120,6 +120,27 @@ assert_match(escape(GAMMA, '\.'), join(readfile(CACHE), "\n"))
 # A forget that removed nothing reports so and leaves no tombstone behind.
 assert_false(simplestartify#mru#Forget(TEMP .. '/never-seen.txt'))
 
+# The cap is a count of kept paths, so its documented lower bound means "keep
+# none".  Reading 0 as "no cap" is the opposite instruction, and it let both
+# the in-memory record and the file written at VimLeavePre grow without limit
+# for exactly the user who asked for the smallest possible one.
+g:simplestartify_mru_max = 0
+execute 'edit ' .. fnameescape(DELTA)
+assert_equal([], simplestartify#mru#List())
+assert_equal(0, simplestartify#mru#Count())
+assert_true(simplestartify#mru#Save())
+assert_equal([], readfile(CACHE))
+
+# And a small cap keeps exactly that many, newest first.
+g:simplestartify_mru_max = 2
+execute 'edit ' .. fnameescape(ALPHA)
+execute 'edit ' .. fnameescape(BETA)
+execute 'edit ' .. fnameescape(GAMMA)
+assert_equal([GAMMA, BETA], simplestartify#mru#List())
+assert_true(simplestartify#mru#Save())
+assert_equal(2, len(readfile(CACHE)))
+g:simplestartify_mru_max = 200
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)
