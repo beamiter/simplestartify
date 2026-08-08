@@ -48,6 +48,7 @@ Set options before the plugin loads. These are the defaults:
 
 ```vim
 let g:simplestartify_auto_open = 1
+let g:simplestartify_hide_intro = 1  " defaults to g:simplestartify_auto_open
 let g:simplestartify_style = 'random'
 let g:simplestartify_styles = ['minimal', 'boxed', 'centered', 'terminal']
 let g:simplestartify_avoid_repeat = 1

@@ -23,8 +23,14 @@ g:simplestartify_session_dir = TEMP .. '/sessions'
 g:simplestartify_mru_file = TEMP .. '/mru'
 execute 'source ' .. fnameescape(ROOT .. '/plugin/simplestartify.vim')
 
+# Turning the dashboard off must not still take the intro screen away: this
+# script sets g:simplestartify_auto_open = 0 above.
+assert_equal(0, g:simplestartify_hide_intro)
+assert_notmatch('I', &shortmess)
+
 for command_name in ['SimpleStartify', 'SimpleStartifyRefresh',
-    'SimpleStartifyNextStyle', 'SimpleStartifyHealth', 'Startify',
+    'SimpleStartifyNextStyle', 'SimpleStartifyHealth', 'SimpleStartifyForget',
+    'SimpleStartifyClean', 'Startify',
     'SSave', 'SLoad', 'SDelete', 'SClose']
   assert_equal(2, exists(':' .. command_name), command_name)
 endfor

@@ -145,6 +145,12 @@ Open the dashboard at |VimEnter|.  Default 1.  It opens only with no file
 arguments, outside Insert mode, when the current buffer is modifiable,
 unnamed, unmodified, normal, and contains one empty line.
 
+                                              *g:simplestartify_hide_intro*
+Add "I" to 'shortmess' so Vim's intro message does not appear before the
+dashboard replaces it.  Defaults to |g:simplestartify_auto_open|, so turning
+automatic opening off keeps the ordinary intro screen.  Set it explicitly to
+override either way.
+
                                                    *g:simplestartify_style*
 "random" (default), "minimal", "boxed", "centered", or "terminal".  An
 unknown string reports an error and draws a random eligible style.

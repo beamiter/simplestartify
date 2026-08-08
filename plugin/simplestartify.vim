@@ -97,7 +97,16 @@ g:simplestartify_mru_file = Text(
 # Prevent vim-startify from double-registering its VimEnter hook if both
 # plugins happen to be present on runtimepath during a migration.
 g:loaded_startify = 1
-set shortmess+=I
+
+# The dashboard replaces the intro screen, and suppressing it here rather than
+# at VimEnter avoids a flash of the built-in message first.  A user who turned
+# automatic opening off asked for ordinary Vim, though, and used to lose their
+# intro anyway - so follow the same switch unless told otherwise.
+g:simplestartify_hide_intro = Flag(
+  Legacy('hide_intro', g:simplestartify_auto_open), g:simplestartify_auto_open)
+if g:simplestartify_hide_intro
+  set shortmess+=I
+endif
 
 command! -nargs=? -bar -complete=customlist,simplestartify#CompleteStyle
       \ SimpleStartify call simplestartify#Open(<q-args>)

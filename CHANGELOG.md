@@ -21,6 +21,11 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- Disabling the dashboard no longer removes Vim's intro message anyway.
+  `shortmess+=I` was applied unconditionally at plugin load, so a user who set
+  `g:simplestartify_auto_open = 0` got a blank buffer and no intro. Intro
+  suppression now follows that option and can be overridden with the new
+  `g:simplestartify_hide_intro`.
 - `:SimpleStartifyHealth` now opens a report instead of echoing two lines. It
   answers "why is my recent list empty" by naming an unusable `'viminfo'`,
   catches a mistyped `g:simplestartify_style` once instead of erroring on
