@@ -21,6 +21,12 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- Added `?` and `g?` on the dashboard, plus `<Plug>(simplestartify-help)`,
+  showing every live key in a popup. It is built from the buffer's actual
+  entries, so it always names the current session letters -- the keys that
+  replace a normal-mode command while the dashboard is open, which nothing
+  previously told you. The footer now degrades by window width instead of
+  being ellipsized away, and always keeps the pointer to `?`.
 - Disabling the dashboard no longer removes Vim's intro message anyway.
   `shortmess+=I` was applied unconditionally at plugin load, so a user who set
   `g:simplestartify_auto_open = 0` got a blank buffer and no intro. Intro

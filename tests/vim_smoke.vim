@@ -49,6 +49,16 @@ assert_match('simplestartify#Activate', maparg('<CR>', 'n'))
 assert_match('simplestartify#DeleteCurrentSession', maparg('d', 'n'))
 assert_match('simplestartify#Move', maparg('j', 'n'))
 assert_match('simplestartify#Move', maparg('k', 'n'))
+assert_match('simplestartify#Help', maparg('?', 'n'))
+
+# The key reference is built from the live actions, so it always names the
+# session letters that are currently shadowing normal-mode commands.
+var help = join(simplestartify#HelpLines(), "\n")
+assert_match('open it in a vertical split', help)
+for action in values(b:simplestartify_actions)
+  assert_match('\V\n  ' .. escape(action.key, '\\') .. ' ', help)
+endfor
+assert_match('SESSIONS', help)
 
 # A refresh must give up the shortcut letters it no longer owns.  A stale
 # buffer-local mapping resolves to no action and returns silently, so the

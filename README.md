@@ -103,6 +103,7 @@ are enabled, the Git root wins when found.
 | `R` | refresh recent files and sessions, preserving the style and selection |
 | `d` | confirm and delete the selected session |
 | `D` | forget the selected recent file |
+| `?` / `g?` | list every live key, including the current session letters |
 
 Opening an entry in a split or a tab leaves the dashboard in its own window,
 so you can open several files in a row; `<CR>` replaces it. Sessions ignore
@@ -150,8 +151,8 @@ to a readable regular session in the same directory. `__LAST__` itself is
 never shown on the dashboard or in completion.
 
 The plugin also defines `<Plug>(simplestartify-open)`,
-`<Plug>(simplestartify-refresh)`, `<Plug>(simplestartify-next-style)`, and
-`<Plug>(simplestartify-forget)`.
+`<Plug>(simplestartify-refresh)`, `<Plug>(simplestartify-next-style)`,
+`<Plug>(simplestartify-forget)`, and `<Plug>(simplestartify-help)`.
 
 ## Session safety
 

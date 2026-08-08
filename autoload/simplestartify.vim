@@ -128,6 +128,18 @@ def Sessions(): list<dict<any>>
   return out
 enddef
 
+# Degrade by width tier rather than letting Fit() ellipsize a long line down
+# to nothing: on a narrow window the only thing worth spending columns on is
+# the pointer to the full list.
+def Footer(width: number): string
+  if width >= 72
+    return '<CR> open  s/v/t split  j/k move  r restyle  R refresh  ? keys'
+  elseif width >= 26
+    return '<CR> open   ? keys'
+  endif
+  return '?'
+enddef
+
 def Model(): dict<any>
   return {
     cwd: CleanLabel(fnamemodify(getcwd(), ':~')),
@@ -138,7 +150,6 @@ def Model(): dict<any>
       {key: 'r', kind: 'restyle', label: 'roll another UI style'},
       {key: 'q', kind: 'quit', label: 'quit'},
     ],
-    footer: '<Enter> open  j/k move  r restyle  R refresh  d session  D forget',
   }
 enddef
 
@@ -339,6 +350,8 @@ def InstallMappings(actions: dict<any>)
   nnoremap <buffer><silent> R <ScriptCmd>simplestartify#Refresh()<CR>
   nnoremap <buffer><silent> d <ScriptCmd>simplestartify#DeleteCurrentSession()<CR>
   nnoremap <buffer><silent> D <ScriptCmd>simplestartify#ForgetRecent()<CR>
+  nnoremap <buffer><silent> ? <ScriptCmd>simplestartify#Help()<CR>
+  nnoremap <buffer><silent> g? <ScriptCmd>simplestartify#Help()<CR>
   var installed: list<string> = []
   for action in values(actions)
     var key = get(action, 'key', '')
@@ -365,7 +378,10 @@ def Layout(style: string, selected_key: string = '')
     model = Rebuild()
   endif
   var width = DashboardWidth()
-  var layout = simplestartify#ui#Build(model, style, width)
+  # The footer is the one part of the model that depends on the width, so it
+  # is resolved here rather than baked into the cache.
+  var layout = simplestartify#ui#Build(
+    extend(copy(model), {footer: Footer(width)}), style, width)
   setlocal modifiable
   silent! execute 'keepjumps %delete _'
   var lines = get(layout, 'lines', [''])
@@ -645,6 +661,78 @@ export def DeleteCurrentSession()
         \ && simplestartify#session#Delete(true, name)
     Refresh()
   endif
+enddef
+
+const FIXED_KEYS = [
+  ['<CR>', 'open the selected entry'],
+  ['s, CTRL-X', 'open it in a split'],
+  ['v, CTRL-V', 'open it in a vertical split'],
+  ['t, CTRL-T', 'open it in a new tab'],
+  ['j, k', 'next / previous entry'],
+  ['<Tab>, <S-Tab>', 'next / previous entry'],
+  ['r', 'deal another UI style'],
+  ['R', 'refresh recent files and sessions'],
+  ['d', 'delete the selected session'],
+  ['D', 'forget the selected recent file'],
+  ['?', 'this list'],
+]
+
+const KIND_TITLES = {
+  file: 'RECENT FILES',
+  session: 'SESSIONS',
+  new: 'ACTIONS',
+  restyle: 'ACTIONS',
+  quit: 'ACTIONS',
+}
+
+# Built from b:simplestartify_actions rather than from a hand-written list, so
+# it cannot drift from what the buffer actually has mapped - which matters
+# most for the session letters, since those are the keys that change.
+export def HelpLines(): list<string>
+  var lines: list<string> = ['KEYS']
+  for [key, description] in FIXED_KEYS
+    add(lines, printf('  %-16s %s', key, description))
+  endfor
+  var actions = get(b:, 'simplestartify_actions', {})
+  var ordered = sort(mapnew(keys(actions), (_, lnum) => str2nr(lnum)), 'n')
+  var title = ''
+  for lnum in ordered
+    var action = actions[string(lnum)]
+    var section = get(KIND_TITLES, get(action, 'kind', ''), 'ENTRIES')
+    if section !=# title
+      title = section
+      add(lines, '')
+      add(lines, title)
+    endif
+    add(lines, printf('  %-16s %s',
+      get(action, 'key', '?'), get(action, 'label', '')))
+  endfor
+  add(lines, '')
+  add(lines, 'Entry keys replace the normal-mode command of the same letter')
+  add(lines, 'while this buffer is open.')
+  return lines
+enddef
+
+export def Help()
+  if !IsDashboard()
+    return
+  endif
+  var lines = HelpLines()
+  if exists('*popup_create')
+    popup_create(lines, {
+      title: ' SimpleStartify ',
+      border: [],
+      padding: [0, 1, 0, 1],
+      moved: 'any',
+      close: 'click',
+      maxheight: max([5, &lines - 4]),
+    })
+    return
+  endif
+  # No popup support: the command line is the only place left.
+  for line in lines
+    echomsg line
+  endfor
 enddef
 
 export def ForgetRecent(requested: string = '')

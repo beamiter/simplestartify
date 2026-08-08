@@ -92,12 +92,19 @@ selected.
     R                   refresh data, keeping style and selection
     d                   confirm and delete the selected session
     D                   forget the selected recent file
+    ?, g?               list every live key in a popup
 
 The dashboard buffer keeps its window when an entry is opened in a split or a
 tab, so several files can be opened one after another; |<CR>| replaces it.  A
 session ignores the split verbs because loading one replaces the whole
 layout.  "s", "t" and "v" are never handed out as session shortcuts, so a
 session can never silently take one of them over.
+
+The "?" list is built from the entries the buffer actually has mapped, so it
+always names the current session letters.  Those letters replace the
+normal-mode command of the same name for as long as the dashboard buffer
+exists, which is what "?" exists to make visible.  The footer degrades by
+window width and always keeps the pointer to "?".
 
 Recent entries come from two sources, in this order: the files opened during
 this Vim session, then |v:oldfiles|.  Vim fills |v:oldfiles| once from
@@ -453,6 +460,9 @@ open.  They use <nomodeline>.
 
 <Plug>(simplestartify-forget)            *<Plug>(simplestartify-forget)*
         Forget the selected recent file.
+
+<Plug>(simplestartify-help)              *<Plug>(simplestartify-help)*
+        Show the dashboard key reference.
 
 No user-facing global key is claimed automatically.
 

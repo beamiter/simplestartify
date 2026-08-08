@@ -131,6 +131,7 @@ nnoremap <silent> <Plug>(simplestartify-open) <Cmd>SimpleStartify<CR>
 nnoremap <silent> <Plug>(simplestartify-refresh) <Cmd>SimpleStartifyRefresh<CR>
 nnoremap <silent> <Plug>(simplestartify-next-style) <Cmd>SimpleStartifyNextStyle<CR>
 nnoremap <silent> <Plug>(simplestartify-forget) <Cmd>SimpleStartifyForget<CR>
+nnoremap <silent> <Plug>(simplestartify-help) <Cmd>call simplestartify#Help()<CR>
 
 simplestartify#SetupHighlights()
 
