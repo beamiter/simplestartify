@@ -53,6 +53,15 @@ let g:simplestartify_style = 'random'
 let g:simplestartify_styles = ['minimal', 'boxed', 'centered', 'terminal']
 let g:simplestartify_avoid_repeat = 1
 
+let g:simplestartify_lists = [
+  \ {'type': 'files'}, {'type': 'sessions'}, {'type': 'bookmarks'},
+  \ {'type': 'commands'}, {'type': 'special'}]
+let g:simplestartify_bookmarks = []
+let g:simplestartify_commands = []
+let g:simplestartify_skiplist = [
+  \ '\.git[\\/]\%(COMMIT_EDITMSG\|MERGE_MSG\|TAG_EDITMSG\|SQUASH_MSG\)$',
+  \ '\.git[\\/]rebase-\%(merge\|apply\)[\\/]']
+
 let g:simplestartify_recent_count = 7   " clamped to 0..9
 let g:simplestartify_session_count = 4  " clamped to 0..13
 let g:simplestartify_session_dir = '~/.vim/session'
@@ -79,6 +88,52 @@ enabled, the active managed session is saved at `VimLeavePre` and before
 `:SLoad` switches sessions. An explicit `:SClose` always saves the active
 managed session, regardless of this setting.
 
+### Sections
+
+`g:simplestartify_lists` decides what the dashboard shows and in what order.
+Seven section types exist: `files` (recent files anywhere), `dir` (recent
+files below the working directory), `project` (recent files below its Git
+root), `sessions`, `bookmarks`, `commands`, and `special` (new buffer,
+restyle, quit).
+
+```vim
+let g:simplestartify_lists = [
+  \ {'type': 'dir', 'header': 'IN THIS PROJECT', 'limit': 5},
+  \ {'type': 'files'},
+  \ {'type': 'bookmarks'},
+  \ {'type': 'commands'},
+  \ {'type': 'sessions'},
+  \ {'type': 'special'}]
+
+let g:simplestartify_bookmarks = ['~/.vimrc', {'c': '~/.vim/config'}]
+let g:simplestartify_commands = [
+  \ 'SimplePlugUpdate',
+  \ ['edit vimrc', 'edit $MYVIMRC'],
+  \ {'u': ['update plugins', ':SimplePlugUpdate']}]
+```
+
+A file already shown by an earlier section is not repeated in a later one, so
+`dir` before `files` reads as "this project first, then everything else". File
+entries take the `1`..`9` keys; sessions, bookmarks and commands take letters.
+A key pinned in a bookmark or command dictionary is reserved before anything
+is handed out, so a session can never be given the same one, and a key the
+dashboard already owns (`d`, `s`, `q`, ...) is refused and replaced with an
+automatic one. Entries past the end of a pool are drawn without a marker and
+opened with the cursor and `<CR>`.
+
+`files`, `sessions` and `special` are drawn even when empty; every other
+section is left out when it has nothing in it, so the default configuration
+looks exactly as it did before sections existed. `:SimpleStartifyHealth` lists
+each drawn section with its entry count and names any configured section left
+out for being empty.
+
+`g:simplestartify_skiplist` is a list of Vim patterns for paths that are never
+recorded and never shown. It defaults to the `.git` files another tool writes
+-- `COMMIT_EDITMSG` and friends -- which are readable and would otherwise take
+a shortcut slot after every commit. It applies both when a buffer is recorded
+and when the dashboard is drawn, so adding a pattern also hides paths recorded
+earlier.
+
 The startup screen opens only when Vim has no file arguments and the current
 buffer is an unnamed, unmodified, empty normal buffer. Manual commands remain
 available when automatic opening is disabled.
@@ -93,7 +148,7 @@ are enabled, the Git root wins when found.
 | Key | Action |
 | --- | --- |
 | `1` ... `9` | open a recent readable file |
-| letter shown beside a session | load that session |
+| letter shown beside an entry | load that session, open that bookmark, or run that command |
 | `n` | open a new empty buffer |
 | `r` | deal another random style |
 | `q` | quit Vim |

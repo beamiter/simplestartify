@@ -132,6 +132,28 @@ export def Load()
   Merge(FromDisk())
 enddef
 
+# Exported because the dashboard has to apply the same rule to v:oldfiles and
+# to entries recorded before the option was set: one implementation, one
+# answer, whichever side of the record the path arrived from.
+export def Skipped(path: string): bool
+  var patterns = get(g:, 'simplestartify_skiplist', [])
+  if type(patterns) != v:t_list
+    return false
+  endif
+  # plugin/ drops unparsable patterns at startup, but nothing stops a user
+  # assigning the variable afterwards, and a throw here would fire at every
+  # BufWinEnter.  A broken pattern must cost the filter, never the editor.
+  try
+    for pattern in patterns
+      if type(pattern) == v:t_string && !empty(pattern) && path =~# pattern
+        return true
+      endif
+    endfor
+  catch
+  endtry
+  return false
+enddef
+
 def Skip(path: string): bool
   if empty(path) || path =~# '[\t\r\n]'
     return true
@@ -139,7 +161,10 @@ def Skip(path: string): bool
   # Session files are the plugin's own bookkeeping; loading one must not make
   # it look like a recently edited document.
   var directory = simplestartify#session#Dir()
-  return !empty(directory) && fnamemodify(path, ':h') ==# directory
+  if !empty(directory) && fnamemodify(path, ':h') ==# directory
+    return true
+  endif
+  return Skipped(path)
 enddef
 
 def Record(path: string, when: number)

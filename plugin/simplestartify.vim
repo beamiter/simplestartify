@@ -46,6 +46,173 @@ def Enum(value: any, allowed: list<string>, fallback: string): string
         \ : fallback
 enddef
 
+# Section types the dashboard knows how to fill.  "dir" and "project" are the
+# same recent-files list narrowed to the working directory and to its VCS
+# root, which is the one thing users of other start screens ask for most.
+const SECTION_TYPES = ['files', 'dir', 'project', 'sessions', 'bookmarks',
+  'commands', 'special']
+
+# The default deck is exactly what the dashboard drew before sections existed:
+# bookmarks and commands are empty out of the box and an empty configurable
+# section is not rendered, so no existing screen changes shape by upgrading.
+const DEFAULT_LISTS = [{type: 'files'}, {type: 'sessions'},
+  {type: 'bookmarks'}, {type: 'commands'}, {type: 'special'}]
+
+# Keys the dashboard itself owns.  An entry mapping is installed after these,
+# so an explicitly requested "d" would quietly replace session deletion; such a
+# request is dropped and the entry is given an ordinary automatic key instead.
+const RESERVED_KEYS = ['n', 'r', 'q', 's', 't', 'v', 'j', 'k', 'd', 'D', 'R', '?']
+
+# Paths that are readable but are never what "recently edited" means.  This
+# deliberately stays short: everything here is a file some other tool wrote
+# under .git, not a document, and a default that guessed at /tmp or a scheme
+# prefix would hide files people really do edit.
+const DEFAULT_SKIPLIST = [
+  '\.git[\\/]\%(COMMIT_EDITMSG\|MERGE_MSG\|TAG_EDITMSG\|SQUASH_MSG\)$',
+  '\.git[\\/]rebase-\%(merge\|apply\)[\\/]',
+]
+
+def EntryKey(value: any): string
+  return type(value) == v:t_string && value =~# '^[0-9A-Za-z]$'
+        \ && index(RESERVED_KEYS, value) < 0
+        \ ? value
+        \ : ''
+enddef
+
+def Header(value: any): string
+  # vim-startify's g:startify_lists writes a header as a one-element list of
+  # already-indented text, so accept that shape as well as a plain string.
+  if type(value) == v:t_string
+    return trim(value)
+  endif
+  if type(value) == v:t_list
+    for item in value
+      if type(item) == v:t_string && !empty(trim(item))
+        return trim(item)
+      endif
+    endfor
+  endif
+  return ''
+enddef
+
+def Lists(value: any): list<dict<any>>
+  if type(value) != v:t_list
+    return deepcopy(DEFAULT_LISTS)
+  endif
+  var out: list<dict<any>> = []
+  for item in value
+    var spec: dict<any> = {}
+    if type(item) == v:t_string
+      spec = {type: item}
+    elseif type(item) == v:t_dict
+      spec = copy(item)
+    else
+      continue
+    endif
+    var kind = get(spec, 'type', '')
+    if type(kind) != v:t_string || index(SECTION_TYPES, kind) < 0
+      continue
+    endif
+    var normalized: dict<any> = {type: kind}
+    var header = Header(get(spec, 'header', ''))
+    if !empty(header)
+      normalized.header = header
+    endif
+    if type(get(spec, 'limit', '')) == v:t_number
+      normalized.limit = max([0, spec.limit])
+    endif
+    add(out, normalized)
+  endfor
+  # As with the style pool: a list that normalizes to nothing is a mistake, and
+  # a dashboard with no sections at all is not a state worth offering.
+  return empty(out) ? deepcopy(DEFAULT_LISTS) : out
+enddef
+
+def Bookmarks(value: any): list<dict<any>>
+  if type(value) != v:t_list
+    return []
+  endif
+  var out: list<dict<any>> = []
+  for item in value
+    if type(item) == v:t_string && !empty(item)
+      add(out, {key: '', path: item})
+    elseif type(item) == v:t_dict
+      for [key, target] in items(item)
+        if type(target) == v:t_string && !empty(target)
+          add(out, {key: EntryKey(key), path: target})
+        endif
+      endfor
+    endif
+  endfor
+  return out
+enddef
+
+def CommandText(value: any): string
+  # People write commands with the colon they would type; keep both forms
+  # working rather than making the leading character significant.
+  return type(value) == v:t_string ? trim(substitute(value, '^\s*:\+', '', '')) : ''
+enddef
+
+def CommandEntry(key: string, value: any): dict<any>
+  if type(value) == v:t_string
+    var plain = CommandText(value)
+    return empty(plain) ? {} : {key: key, command: plain, label: plain}
+  endif
+  # vim-startify's pair form is [description, command], in that order.
+  if type(value) == v:t_list && len(value) == 2 && type(value[0]) == v:t_string
+    var listed = CommandText(value[1])
+    return empty(listed)
+          \ ? {}
+          \ : {key: key, command: listed,
+              \ label: empty(trim(value[0])) ? listed : trim(value[0])}
+  endif
+  return {}
+enddef
+
+def Commands(value: any): list<dict<any>>
+  if type(value) != v:t_list
+    return []
+  endif
+  var out: list<dict<any>> = []
+  for item in value
+    if type(item) == v:t_dict
+      for [key, target] in items(item)
+        var keyed = CommandEntry(EntryKey(key), target)
+        if !empty(keyed)
+          add(out, keyed)
+        endif
+      endfor
+    else
+      var plain = CommandEntry('', item)
+      if !empty(plain)
+        add(out, plain)
+      endif
+    endif
+  endfor
+  return out
+enddef
+
+def Patterns(value: any): list<string>
+  if type(value) != v:t_list
+    return copy(DEFAULT_SKIPLIST)
+  endif
+  var out: list<string> = []
+  for item in value
+    if type(item) != v:t_string || empty(item)
+      continue
+    endif
+    # An unparsable pattern would throw once per candidate path on every draw
+    # and at every BufWinEnter.  Test it once here and drop it if it is broken.
+    try
+      if 'simplestartify' =~# item
+      endif
+      add(out, item)
+    catch
+    endtry
+  endfor
+  return out
+enddef
+
 def StyleList(value: any): list<string>
   if type(value) != v:t_list
     return ['minimal', 'boxed', 'centered', 'terminal']
@@ -69,6 +236,12 @@ g:simplestartify_style = Text(Legacy('style', 'random'), 'random')
 g:simplestartify_styles = StyleList(Legacy(
   'styles', ['minimal', 'boxed', 'centered', 'terminal']))
 g:simplestartify_avoid_repeat = Flag(Legacy('avoid_repeat', 1), 1)
+g:simplestartify_lists = Lists(Legacy('lists', DEFAULT_LISTS))
+g:simplestartify_bookmarks = Bookmarks(Legacy('bookmarks', []))
+g:simplestartify_commands = Commands(Legacy('commands', []))
+# An empty list here is a real request - "skip nothing" - unlike an empty
+# section list, so it is honoured rather than replaced by the default.
+g:simplestartify_skiplist = Patterns(Legacy('skiplist', DEFAULT_SKIPLIST))
 g:simplestartify_recent_count = Clamp(Legacy('recent_count', 7), 7, 0, 9)
 g:simplestartify_session_count = Clamp(Legacy('session_count', 4), 4, 0, 13)
 g:simplestartify_session_dir = Text(

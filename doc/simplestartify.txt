@@ -12,6 +12,7 @@ CONTENTS                                             *simplestartify-contents*
     3. Styles and random draws ... |simplestartify-styles|
     4. Dashboard keys ............ |simplestartify-keys|
     5. Recent files .............. |simplestartify-recent|
+    5a. Sections ................. |simplestartify-sections|
     6. Options ................... |simplestartify-options|
     7. Commands .................. |simplestartify-commands|
     8. Session safety ............ |simplestartify-sessions|
@@ -77,7 +78,8 @@ selected.
 4. DASHBOARD KEYS                                      *simplestartify-keys*
 
     1 ... 9            open the corresponding recent readable file
-    displayed letter    load the corresponding session
+    displayed letter    load that session, open that bookmark, or run that
+                        command, as shown beside the entry
     n                   open a new empty buffer
     r                   draw another random UI style
     q                   quit Vim
@@ -142,6 +144,40 @@ This is a cache and it is safe to delete.  Nothing on the dashboard depends on
 it existing, and |g:simplestartify_mru_persist| turns it off entirely.
 
 ==============================================================================
+5a. SECTIONS                                        *simplestartify-sections*
+
+|g:simplestartify_lists| decides which sections the dashboard draws and in
+what order.  Seven section types exist:
+
+    files       recent files, anywhere
+    dir         recent files below the working directory
+    project     recent files below the working directory's Git root, or
+                below the working directory when there is no Git root
+    sessions    saved sessions from |g:simplestartify_session_dir|
+    bookmarks   the paths in |g:simplestartify_bookmarks|
+    commands    the commands in |g:simplestartify_commands|
+    special     new buffer / restyle / quit
+
+A file already shown by an earlier section is not repeated in a later one, so
+listing "dir" before "files" gives "this directory first, then everything
+else" without duplicates.  At most a hundred recent paths are examined per
+draw, which is far more than the nine that can carry a digit shortcut.
+
+Shortcut keys are handed out from two pools: 1..9 for file, directory and
+project entries, and the letters "abcefghilmopuwxyz" for sessions, bookmarks
+and commands.  A key pinned in |g:simplestartify_bookmarks| or
+|g:simplestartify_commands| is removed from the pools before anything is
+assigned, so it can never be handed to a session as well.  When a pool runs
+out, the remaining entries are drawn without a marker and are opened with the
+cursor and |<CR>|; the "?" list shows them as "<CR> only".
+
+"files", "sessions" and "special" are drawn even when they are empty, showing
+"(none yet)".  Every other section is left out when it has nothing in it, so
+an unconfigured bookmarks section costs no screen space.
+|:SimpleStartifyHealth| names each drawn section with its entry count and
+warns about a configured section that was left out for being empty.
+
+==============================================================================
 6. OPTIONS                                           *simplestartify-options*
 
 Set options before the plugin loads.  Boolean options accept a Boolean or a
@@ -176,9 +212,74 @@ out; if that leaves no candidate, "minimal" is used.
 Avoid the current style on the next random draw when the pool has more than
 one member.  Default 1.
 
+                                                   *g:simplestartify_lists*
+The sections to draw, in order.  Default: >
+
+    [{'type': 'files'}, {'type': 'sessions'}, {'type': 'bookmarks'},
+     {'type': 'commands'}, {'type': 'special'}]
+<
+Each item is a dictionary with a "type" from |simplestartify-sections|, or a
+bare type string.  Two optional members: >
+
+    {'type': 'dir', 'header': 'IN THIS DIRECTORY', 'limit': 5}
+<
+"header" replaces the section's built-in name in every layout and may also be
+a list of strings, of which the first non-blank one is used, so a
+g:startify_lists value can be reused as is.  "limit" is the maximum number of
+entries, overriding |g:simplestartify_recent_count| and
+|g:simplestartify_session_count| for that section.  Unknown types and other
+value types are discarded during startup normalization; if that leaves
+nothing, the default list is restored.
+
+                                               *g:simplestartify_bookmarks*
+Paths pinned to the dashboard, in order.  Default [].  Each item is either a
+path, or a single-entry dictionary mapping a shortcut key to a path: >
+
+    let g:simplestartify_bookmarks = ['~/.vimrc', {'c': '~/.vim/config'}]
+<
+The path is expanded with |expand()|.  A bookmark is shown whether or not it
+exists yet: opening a directory bookmark opens the directory, and opening a
+bookmark to a file that is not there creates an empty buffer for that name.
+A requested key must be a single character in [0-9A-Za-z] and must not be one
+of the keys the dashboard already owns ("n", "r", "q", "s", "t", "v", "j",
+"k", "d", "D", "R", "?"); a rejected key is replaced by an automatic one, and
+never silently takes a dashboard key over.
+
+                                                *g:simplestartify_commands*
+Ex commands offered on the dashboard, in order.  Default [].  Each item is a
+command string, a ["description", "command"] pair, or a single-entry
+dictionary mapping a shortcut key to either of those: >
+
+    let g:simplestartify_commands = [
+      \ 'SimplePlugUpdate',
+      \ ['edit vimrc', 'edit $MYVIMRC'],
+      \ {'u': ['update plugins', ':SimplePlugUpdate']}]
+<
+A leading colon is optional.  Key validation is the same as for bookmarks.
+The command runs with the dashboard still open and inside a |try| block: a
+command that fails reports "[SimpleStartify] command failed: ..." instead of
+throwing out of the mapping.  Session and split verbs do not apply to a
+command entry.
+
+                                                *g:simplestartify_skiplist*
+Patterns for paths that are never recorded as recent files and never shown.
+Each item is a Vim regular expression matched against the absolute path with
+|expr-=~#|.  Default: >
+
+    ['\.git[\\/]\%(COMMIT_EDITMSG\|MERGE_MSG\|TAG_EDITMSG\|SQUASH_MSG\)$',
+     '\.git[\\/]rebase-\%(merge\|apply\)[\\/]']
+<
+These are files another tool wrote, not documents, and they are readable, so
+without this they take a shortcut slot after every commit.  The list applies
+both when a buffer is recorded and when the dashboard is drawn, so adding a
+pattern also hides paths recorded earlier and paths from |v:oldfiles|.  An
+empty list is honoured and skips nothing; a pattern that does not compile is
+dropped during startup normalization rather than throwing on every draw.
+
                                               *g:simplestartify_recent_count*
 Maximum recent files to show.  Default 7, clamped to 0..9 because the entries
-use the keys 1..9.
+use the keys 1..9.  It is the default limit of every "files", "dir" and
+"project" section; those sections share the 1..9 pool.
 
                                              *g:simplestartify_session_count*
 Maximum sessions to show.  Default 4, normalized to the range 0..13.  Each
@@ -261,6 +362,10 @@ string disables persistence in the same way as
                         styles are eligible at the current width, and whether
                         a configured style is being dropped for being too
                         wide.
+        SECTIONS        each section that would be drawn with its entry
+                        count, any entries past the end of the shortcut
+                        alphabet, and any configured section left out for
+                        being empty.
         RECENT FILES    how many entries come from each source, whether
                         'viminfo' can persist |v:oldfiles| at all, and where
                         the recent-file cache lives.
@@ -283,9 +388,10 @@ string disables persistence in the same way as
                                       *g:simplestartify_health_last*
 The dictionary most recently produced by |:SimpleStartifyHealth|, also
 returned by simplestartify#Health() for scripting.  Members: "ok", "report"
-(the rendered lines), "styles", "width", "session_dir", "session_writable",
-"session_count", "session_leftovers", "mru_count", "mru_file", "mru_persist"
-and "oldfiles_count".
+(the rendered lines), "styles", "width", "sections" (the model that would be
+drawn), "configured" (the section types in |g:simplestartify_lists|),
+"session_dir", "session_writable", "session_count", "session_leftovers",
+"mru_count", "mru_file", "mru_persist" and "oldfiles_count".
 
 "ok" is false when any check produced an ERROR line, which now includes an
 existing but unwritable session directory and an existing but unwritable

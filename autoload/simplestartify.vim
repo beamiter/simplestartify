@@ -70,13 +70,16 @@ def DisplayPath(path: string): string
   return CleanLabel(fnamemodify(absolute, ':~'))
 enddef
 
-def RecentFiles(): list<dict<any>>
-  var out: list<dict<any>> = []
+# Stat'ing is the expensive part of building the model, and only nine entries
+# can ever carry a digit shortcut, so there is no point walking a thousand-line
+# v:oldfiles.  A section narrowed to one directory still wants headroom, hence
+# a bound well above what any section can display rather than the section
+# limit itself.
+const CANDIDATE_SCAN = 100
+
+def RecentCandidates(): list<string>
+  var out: list<string> = []
   var seen: dict<bool> = {}
-  var limit = min([Count('simplestartify_recent_count', 7, len(RECENT_KEYS)), len(RECENT_KEYS)])
-  if limit == 0
-    return out
-  endif
   # The in-session record comes first: v:oldfiles is frozen at startup, so a
   # file opened since then exists only there, and it is by definition more
   # recent than anything viminfo remembers.
@@ -89,13 +92,55 @@ def RecentFiles(): list<dict<any>>
       continue
     endif
     var path = fnamemodify(candidate, ':p')
-    if !filereadable(path) || has_key(seen, path)
+    if has_key(seen, path) || simplestartify#mru#Skipped(path)
+          \ || !filereadable(path)
       continue
     endif
     seen[path] = true
-    var index = len(out)
+    add(out, path)
+    if len(out) >= CANDIDATE_SCAN
+      break
+    endif
+  endfor
+  return out
+enddef
+
+# Both sides are compared as forward-slash paths so a Windows drive path and a
+# root recorded with the other separator still match.
+def Under(path: string, root: string): bool
+  if empty(root)
+    return false
+  endif
+  var directory = substitute(substitute(root, '[\\/]\+$', '', ''), '\\', '/', 'g')
+  return stridx(substitute(path, '\\', '/', 'g'), directory .. '/') == 0
+enddef
+
+def TakeKey(pool: list<string>): string
+  # An exhausted pool is not an error: the entry renders without a marker and
+  # stays reachable with the cursor and <CR>.
+  return empty(pool) ? '' : remove(pool, 0)
+enddef
+
+def FileEntries(
+    candidates: list<string>,
+    root: string,
+    limit: number,
+    used: dict<bool>,
+    digits: list<string>): list<dict<any>>
+  var out: list<dict<any>> = []
+  if limit <= 0
+    return out
+  endif
+  for path in candidates
+    # A file already shown by an earlier, narrower section is not repeated: a
+    # project list followed by the global list would otherwise say everything
+    # twice and burn two shortcuts on it.
+    if has_key(used, path) || (!empty(root) && !Under(path, root))
+      continue
+    endif
+    used[path] = true
     add(out, {
-      key: RECENT_KEYS[index],
+      key: TakeKey(digits),
       kind: 'file',
       label: DisplayPath(path),
       path: path,
@@ -107,16 +152,14 @@ def RecentFiles(): list<dict<any>>
   return out
 enddef
 
-def Sessions(): list<dict<any>>
+def SessionEntries(limit: number, letters: list<string>): list<dict<any>>
   var out: list<dict<any>> = []
-  var limit = min([Count('simplestartify_session_count', 4, len(SESSION_KEYS)), len(SESSION_KEYS)])
-  if limit == 0
+  if limit <= 0
     return out
   endif
   for name in simplestartify#session#List()
-    var index = len(out)
     add(out, {
-      key: SESSION_KEYS[index],
+      key: TakeKey(letters),
       kind: 'session',
       label: CleanLabel(name),
       name: name,
@@ -124,6 +167,59 @@ def Sessions(): list<dict<any>>
     if len(out) >= limit
       break
     endif
+  endfor
+  return out
+enddef
+
+def Configured(name: string): list<dict<any>>
+  var value = get(g:, name, [])
+  if type(value) != v:t_list
+    return []
+  endif
+  return filter(copy(value), (_, item) => type(item) == v:t_dict)
+enddef
+
+def BookmarkEntries(limit: number, letters: list<string>): list<dict<any>>
+  var out: list<dict<any>> = []
+  for item in Configured('simplestartify_bookmarks')
+    if len(out) >= limit
+      break
+    endif
+    var target = get(item, 'path', '')
+    if type(target) != v:t_string || empty(target)
+      continue
+    endif
+    # A bookmark is shown whether or not the target exists yet: it is a place
+    # the user asked to keep, and opening a missing one creates the buffer.
+    var path = substitute(fnamemodify(expand(target), ':p'), '[\\/]\+$', '', '')
+    var key = get(item, 'key', '')
+    add(out, {
+      key: type(key) == v:t_string && !empty(key) ? key : TakeKey(letters),
+      kind: 'bookmark',
+      label: DisplayPath(path),
+      path: path,
+    })
+  endfor
+  return out
+enddef
+
+def CommandEntries(limit: number, letters: list<string>): list<dict<any>>
+  var out: list<dict<any>> = []
+  for item in Configured('simplestartify_commands')
+    if len(out) >= limit
+      break
+    endif
+    var command = get(item, 'command', '')
+    if type(command) != v:t_string || empty(command)
+      continue
+    endif
+    var key = get(item, 'key', '')
+    add(out, {
+      key: type(key) == v:t_string && !empty(key) ? key : TakeKey(letters),
+      kind: 'command',
+      label: CleanLabel(get(item, 'label', command)),
+      command: command,
+    })
   endfor
   return out
 enddef
@@ -140,16 +236,133 @@ def Footer(width: number): string
   return '?'
 enddef
 
+const SPECIAL_ENTRIES = [
+  {key: 'n', kind: 'new', label: 'new empty buffer'},
+  {key: 'r', kind: 'restyle', label: 'roll another UI style'},
+  {key: 'q', kind: 'quit', label: 'quit'},
+]
+
+# Three names per section because the four layouts address the reader
+# differently: minimal spells the heading out, boxed and centered want it
+# short enough to survive a frame, and terminal pretends to be a shell
+# transcript.  The built-in values are the exact strings the fixed sections
+# used before they became configurable.
+const SECTION_NAMES = {
+  files: {title: 'recent files', short: 'recent', command: 'recent'},
+  dir: {title: 'in this directory', short: 'here', command: 'recent --dir'},
+  project: {title: 'in this project', short: 'project',
+    command: 'recent --project'},
+  sessions: {title: 'sessions', short: 'sessions', command: 'session list'},
+  bookmarks: {title: 'bookmarks', short: 'bookmarks', command: 'bookmarks'},
+  commands: {title: 'commands', short: 'commands', command: 'commands'},
+  special: {title: 'actions', short: 'actions', command: 'help --actions'},
+}
+
+# These three are the dashboard itself and are drawn even when they have
+# nothing in them, because "(none yet)" is the answer to a question the user
+# asked.  A bookmarks or commands section nobody configured is not, so an
+# empty one is left out rather than adding a row of placeholders.
+const ALWAYS_SHOWN = ['files', 'sessions', 'special']
+const FILE_SECTIONS = ['files', 'dir', 'project']
+
+const FALLBACK_LISTS = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+
+def Lists(): list<dict<any>>
+  var value = get(g:, 'simplestartify_lists', [])
+  if type(value) != v:t_list
+    return deepcopy(FALLBACK_LISTS)
+  endif
+  var specs = filter(copy(value), (_, spec) => type(spec) == v:t_dict
+        \ && has_key(SECTION_NAMES, get(spec, 'type', '')))
+  # plugin/ restores the defaults for a list that normalizes to nothing, but a
+  # value assigned after startup skips that; a dashboard with no sections at
+  # all is never what the assignment meant.
+  return empty(specs) ? deepcopy(FALLBACK_LISTS) : specs
+enddef
+
+def ClaimedKeys(): dict<bool>
+  var out: dict<bool> = {}
+  for item in Configured('simplestartify_bookmarks')
+        \ + Configured('simplestartify_commands')
+    var key = get(item, 'key', '')
+    if type(key) == v:t_string && !empty(key)
+      out[key] = true
+    endif
+  endfor
+  return out
+enddef
+
+def SectionLimit(spec: dict<any>, fallback: number): number
+  var value = get(spec, 'limit', -1)
+  return type(value) == v:t_number && value >= 0 ? value : fallback
+enddef
+
+def SectionNames(spec: dict<any>, kind: string, entries: list<dict<any>>): dict<string>
+  var names = copy(get(SECTION_NAMES, kind, {title: kind, short: kind, command: kind}))
+  var header = get(spec, 'header', '')
+  if type(header) == v:t_string && !empty(header)
+    names = {title: header, short: header, command: header}
+  elseif index(FILE_SECTIONS, kind) >= 0
+    # The terminal layout is a transcript, so its recent-file line has always
+    # shown the limit it was invoked with.
+    names.command ..= ' --limit=' .. len(entries)
+  endif
+  return names
+enddef
+
 def Model(): dict<any>
+  var digits = copy(RECENT_KEYS)
+  var letters = copy(SESSION_KEYS)
+  # Keys the user pinned to a bookmark or a command are taken out of both
+  # pools first, so an automatic assignment can never land on one of them and
+  # leave two entries fighting over the same buffer-local mapping.
+  var claimed = ClaimedKeys()
+  filter(digits, (_, key) => !has_key(claimed, key))
+  filter(letters, (_, key) => !has_key(claimed, key))
+
+  var specs = Lists()
+  # Only pay for the recent-files scan when a section actually consumes it.
+  var wants_files = !empty(filter(mapnew(specs, (_, spec) => spec.type),
+    (_, kind) => index(FILE_SECTIONS, kind) >= 0))
+  var candidates: list<string> = wants_files ? RecentCandidates() : []
+  var used: dict<bool> = {}
+  var recent_limit = Count('simplestartify_recent_count', 7, len(RECENT_KEYS))
+  var session_limit = Count('simplestartify_session_count', 4, len(SESSION_KEYS))
+
+  var sections: list<dict<any>> = []
+  for spec in specs
+    var kind: string = spec.type
+    var entries: list<dict<any>> = []
+    if kind ==# 'files'
+      entries = FileEntries(candidates, '',
+        SectionLimit(spec, recent_limit), used, digits)
+    elseif kind ==# 'dir'
+      entries = FileEntries(candidates, getcwd(),
+        SectionLimit(spec, recent_limit), used, digits)
+    elseif kind ==# 'project'
+      var root = ProjectRoot(getcwd())
+      entries = FileEntries(candidates, empty(root) ? getcwd() : root,
+        SectionLimit(spec, recent_limit), used, digits)
+    elseif kind ==# 'sessions'
+      entries = SessionEntries(SectionLimit(spec, session_limit), letters)
+    elseif kind ==# 'bookmarks'
+      entries = BookmarkEntries(SectionLimit(spec, len(SESSION_KEYS)), letters)
+    elseif kind ==# 'commands'
+      entries = CommandEntries(SectionLimit(spec, len(SESSION_KEYS)), letters)
+    elseif kind ==# 'special'
+      var limit = SectionLimit(spec, len(SPECIAL_ENTRIES))
+      entries = limit <= 0 ? [] : deepcopy(SPECIAL_ENTRIES)[0 : limit - 1]
+    endif
+    if empty(entries) && index(ALWAYS_SHOWN, kind) < 0
+      continue
+    endif
+    add(sections, extend({id: kind, entries: entries},
+      SectionNames(spec, kind, entries)))
+  endfor
+
   return {
     cwd: CleanLabel(fnamemodify(getcwd(), ':~')),
-    recent: RecentFiles(),
-    sessions: Sessions(),
-    special: [
-      {key: 'n', kind: 'new', label: 'new empty buffer'},
-      {key: 'r', kind: 'restyle', label: 'roll another UI style'},
-      {key: 'q', kind: 'quit', label: 'quit'},
-    ],
+    sections: sections,
   }
 enddef
 
@@ -591,10 +804,43 @@ def OpenFile(path: string, verb: string)
   endif
 enddef
 
+def OpenBookmark(path: string, verb: string)
+  if empty(path)
+    return
+  endif
+  if filereadable(path)
+    OpenFile(path, verb)
+    return
+  endif
+  # A directory bookmark opens the directory (netrw or whatever else handles
+  # it), and a bookmark to a file that does not exist yet opens an empty
+  # buffer for that name - both are things the user asked to keep, so neither
+  # is treated as the "this file went away" error a recent entry would raise.
+  execute OPEN_VERBS[verb].file .. ' ' .. fnameescape(path)
+enddef
+
+def RunCommand(command: string)
+  if empty(command)
+    return
+  endif
+  # A user command is arbitrary code running from inside a mapping: without
+  # this, a typo in g:simplestartify_commands aborts the mapping with a raw
+  # Vim error stack on the dashboard.
+  try
+    execute command
+  catch
+    Notify('command failed: ' .. v:exception, true)
+  endtry
+enddef
+
 def Run(action: dict<any>, verb: string)
   var kind = get(action, 'kind', '')
   if kind ==# 'file'
     OpenFile(get(action, 'path', ''), verb)
+  elseif kind ==# 'bookmark'
+    OpenBookmark(get(action, 'path', ''), verb)
+  elseif kind ==# 'command'
+    RunCommand(get(action, 'command', ''))
   elseif kind ==# 'session'
     simplestartify#session#Load(false, get(action, 'name', ''))
   elseif kind ==# 'new'
@@ -680,6 +926,8 @@ const FIXED_KEYS = [
 const KIND_TITLES = {
   file: 'RECENT FILES',
   session: 'SESSIONS',
+  bookmark: 'BOOKMARKS',
+  command: 'COMMANDS',
   new: 'ACTIONS',
   restyle: 'ACTIONS',
   quit: 'ACTIONS',
@@ -704,8 +952,11 @@ export def HelpLines(): list<string>
       add(lines, '')
       add(lines, title)
     endif
+    var key = get(action, 'key', '')
+    # An entry past the end of the shortcut alphabet has no key of its own and
+    # is reached with the cursor; say so rather than printing a fake one.
     add(lines, printf('  %-16s %s',
-      get(action, 'key', '?'), get(action, 'label', '')))
+      empty(key) ? '<CR> only' : key, get(action, 'label', '')))
   endfor
   add(lines, '')
   add(lines, 'Entry keys replace the normal-mode command of the same letter')
@@ -796,6 +1047,30 @@ def CheckStyles(report: list<string>, styles: list<string>, width: number): bool
   endif
   add(report, '')
   return known && !empty(styles)
+enddef
+
+# "My bookmarks are not showing up" has exactly three causes - the section is
+# not in the list, it normalized to nothing, or it is empty and therefore not
+# drawn - and none of them is visible from the dashboard itself.
+def CheckSections(report: list<string>, result: dict<any>): bool
+  add(report, 'SECTIONS')
+  var drawn = mapnew(result.sections, (_, section) => section.id)
+  for section in result.sections
+    var keyless = len(filter(copy(section.entries),
+      (_, entry) => empty(get(entry, 'key', ''))))
+    Say(report, 'OK', printf('%s: %d entr%s', section.id,
+      len(section.entries), len(section.entries) == 1 ? 'y' : 'ies'),
+      keyless == 0 ? '' : printf('%d past the end of the shortcut alphabet; '
+        .. 'reach them with j/k and <CR>', keyless))
+  endfor
+  for kind in result.configured
+    if index(drawn, kind) < 0
+      Say(report, 'WARN', kind .. ': configured but empty',
+        'an empty configurable section is not drawn')
+    endif
+  endfor
+  add(report, '')
+  return true
 enddef
 
 def CheckRecent(report: list<string>, result: dict<any>): bool
@@ -895,6 +1170,8 @@ export def Health(): dict<any>
   var result = {
     styles: styles,
     width: width,
+    sections: get(Model(), 'sections', []),
+    configured: mapnew(Lists(), (_, spec) => spec.type),
     session_dir: session_dir,
     session_writable: isdirectory(session_dir) && filewritable(session_dir) == 2,
     session_count: len(simplestartify#session#List()),
@@ -909,6 +1186,7 @@ export def Health(): dict<any>
   # a hand-maintained expression that quietly ignored writability.
   var ok = CheckEnvironment(report)
   ok = CheckStyles(report, styles, width) && ok
+  ok = CheckSections(report, result) && ok
   ok = CheckRecent(report, result) && ok
   ok = CheckSessions(report, result) && ok
   result.ok = ok

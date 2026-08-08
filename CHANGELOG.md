@@ -4,6 +4,29 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- The dashboard is now built from configurable sections. `g:simplestartify_lists`
+  chooses which of `files`, `dir`, `project`, `sessions`, `bookmarks`,
+  `commands` and `special` are drawn and in what order, with an optional
+  per-section `header` and `limit`. `dir` and `project` are the recent-file
+  list narrowed to the working directory and to its Git root, deduplicated
+  against the sections before them.
+- Added `g:simplestartify_bookmarks` and `g:simplestartify_commands` for
+  pinning paths and Ex commands to the dashboard, accepting vim-startify's
+  shapes including an explicit shortcut key. A pinned key is taken out of the
+  automatic pools first, so no session can be handed the same letter, and a
+  key the dashboard already owns is refused rather than silently replacing the
+  mapping behind it. A command that fails is reported instead of throwing out
+  of the mapping.
+- Added `g:simplestartify_skiplist`, defaulting to the `.git` files another
+  tool writes (`COMMIT_EDITMSG` and friends). They are readable, and readable
+  used to be the only test a recent file had to pass, so a commit cost a
+  shortcut slot. It applies both when a buffer is recorded and when the
+  dashboard is drawn.
+- An entry past the end of its shortcut alphabet is now drawn without a marker
+  and opened with the cursor, instead of being given a fake `[?]` key.
+- `:SimpleStartifyHealth` gained a SECTIONS block: what would be drawn, with
+  entry counts, and which configured section was left out for being empty.
+
 - Recent files are now tracked as they are opened instead of being read only
   from `v:oldfiles`, which Vim freezes at startup and never updates. Files
   opened during this session appear on the dashboard immediately, including in

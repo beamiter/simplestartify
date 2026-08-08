@@ -78,18 +78,38 @@ def AddAction(
   return lnum
 enddef
 
-def Entries(model: dict<any>, name: string): list<dict<any>>
-  var value = get(model, name, [])
+def Entries(section: dict<any>): list<dict<any>>
+  var value = get(section, 'entries', [])
   if type(value) != v:t_list
     return []
   endif
   return value
 enddef
 
+# The model is a list of sections rather than three fixed keys, so a layout
+# renders whatever the user configured without knowing what any of it means.
+def Sections(model: dict<any>): list<dict<any>>
+  var value = get(model, 'sections', [])
+  if type(value) != v:t_list
+    return []
+  endif
+  return filter(copy(value), (_, section) => type(section) == v:t_dict)
+enddef
+
+def Name(section: dict<any>, field: string): string
+  var value = get(section, field, get(section, 'title', ''))
+  return type(value) == v:t_string ? value : ''
+enddef
+
 def Label(entry: dict<any>): string
-  var key = get(entry, 'key', '?')
+  var key = get(entry, 'key', '')
   var label = get(entry, 'label', '')
-  return $'[{key}]  {label}'
+  # More entries than shortcut letters is a legitimate state: such an entry
+  # keeps the marker's width so the column stays aligned, and is opened with
+  # the cursor instead.
+  return type(key) == v:t_string && !empty(key)
+        \ ? $'[{key}]  {label}'
+        \ : $'     {label}'
 enddef
 
 def AddMinimalSection(
@@ -122,12 +142,10 @@ def BuildMinimal(model: dict<any>, width: number): dict<any>
   add(header_lines, Add(lines, 'SIMPLESTARTIFY', width))
   add(header_lines, Add(lines, 'a small, quick way into Vim', width))
   Add(lines, '', width)
-  AddMinimalSection(lines, actions, section_lines, entry_lines,
-    'recent files', Entries(model, 'recent'), width)
-  AddMinimalSection(lines, actions, section_lines, entry_lines,
-    'sessions', Entries(model, 'sessions'), width)
-  AddMinimalSection(lines, actions, section_lines, entry_lines,
-    'actions', Entries(model, 'special'), width)
+  for section in Sections(model)
+    AddMinimalSection(lines, actions, section_lines, entry_lines,
+      Name(section, 'title'), Entries(section), width)
+  endfor
   add(footer_lines, Add(lines, get(model, 'footer', ''), width))
 
   return {
@@ -175,14 +193,15 @@ def BuildBoxed(model: dict<any>, width: number): dict<any>
   add(header_lines, Add(lines, edge, width))
   add(header_lines, Add(lines, BoxRow('SIMPLESTARTIFY // RANDOM DECK', inner), width))
   add(header_lines, Add(lines, edge, width))
-  AddBoxedSection(lines, actions, section_lines, entry_lines,
-    'recent', Entries(model, 'recent'), inner, width)
-  Add(lines, BoxRow('', inner), width)
-  AddBoxedSection(lines, actions, section_lines, entry_lines,
-    'sessions', Entries(model, 'sessions'), inner, width)
-  Add(lines, BoxRow('', inner), width)
-  AddBoxedSection(lines, actions, section_lines, entry_lines,
-    'actions', Entries(model, 'special'), inner, width)
+  var first = true
+  for section in Sections(model)
+    if !first
+      Add(lines, BoxRow('', inner), width)
+    endif
+    first = false
+    AddBoxedSection(lines, actions, section_lines, entry_lines,
+      Name(section, 'short'), Entries(section), inner, width)
+  endfor
   add(footer_lines, Add(lines, edge, width))
   add(footer_lines, Add(lines, BoxRow(get(model, 'footer', ''), inner), width))
   add(footer_lines, Add(lines, edge, width))
@@ -235,12 +254,10 @@ def BuildCentered(model: dict<any>, width: number): dict<any>
     add(header_lines, Add(lines, Center(text, width), width))
   endfor
   Add(lines, '', width)
-  AddCenteredSection(lines, actions, section_lines, entry_lines,
-    'RECENT', Entries(model, 'recent'), width)
-  AddCenteredSection(lines, actions, section_lines, entry_lines,
-    'SESSIONS', Entries(model, 'sessions'), width)
-  AddCenteredSection(lines, actions, section_lines, entry_lines,
-    'ACTIONS', Entries(model, 'special'), width)
+  for section in Sections(model)
+    AddCenteredSection(lines, actions, section_lines, entry_lines,
+      toupper(Name(section, 'short')), Entries(section), width)
+  endfor
   add(footer_lines, Add(lines, Center(get(model, 'footer', ''), width), width))
 
   return {
@@ -285,13 +302,10 @@ def BuildTerminal(model: dict<any>, width: number): dict<any>
   add(header_lines, Add(lines, '$ simplestartify --style=random', width))
   add(header_lines, Add(lines, 'boot: ready // cwd: ' .. get(model, 'cwd', ''), width))
   Add(lines, '', width)
-  AddTerminalSection(lines, actions, section_lines, entry_lines,
-    'recent --limit=' .. len(Entries(model, 'recent')),
-    Entries(model, 'recent'), width)
-  AddTerminalSection(lines, actions, section_lines, entry_lines,
-    'session list', Entries(model, 'sessions'), width)
-  AddTerminalSection(lines, actions, section_lines, entry_lines,
-    'help --actions', Entries(model, 'special'), width)
+  for section in Sections(model)
+    AddTerminalSection(lines, actions, section_lines, entry_lines,
+      Name(section, 'command'), Entries(section), width)
+  endfor
   add(footer_lines, Add(lines, '# ' .. get(model, 'footer', ''), width))
 
   return {
