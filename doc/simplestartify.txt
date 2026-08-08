@@ -237,18 +237,47 @@ string disables persistence in the same way as
 
                                                   *:SimpleStartifyHealth*
 :SimpleStartifyHealth
-        Echo the styles currently eligible at this width, the resolved session
-        directory, and how many recent files come from each source.  The
-        result is also stored in |g:simplestartify_health_last| as a
-        dictionary with "ok", "styles", "session_dir", "session_writable",
-        "mru_count", "mru_file", "mru_persist" and "oldfiles_count" entries.
+        Open a scratch buffer reporting what is and is not working, one
+        "[OK]", "[WARN]" or "[ERROR]" line per fact, in four sections:
+
+        ENVIRONMENT     Vim version against the 9.1 minimum, |textprop|
+                        support.
+        STYLES          |g:simplestartify_style| is a real style name, which
+                        styles are eligible at the current width, and whether
+                        a configured style is being dropped for being too
+                        wide.
+        RECENT FILES    how many entries come from each source, whether
+                        'viminfo' can persist |v:oldfiles| at all, and where
+                        the recent-file cache lives.
+        SESSIONS        the resolved directory with its writability and
+                        session count, leftover ".simplestartify-tmp-*" files
+                        from an interrupted save, the state of the
+                        last-session pointer, and any legacy "__LAST__".
+
+        Every ERROR line names a remedy.  The buffer is 'nofile' and can be
+        closed with |:bwipeout|.
+
+                                                   *:SimpleStartifyClean*
+:SimpleStartifyClean
+        Delete leftover ".simplestartify-tmp-*" files from the session
+        directory and report how many were removed.  These are only created
+        between writing a session and renaming it into place, so they exist
+        only after an interrupted save; no session or pointer file is ever
+        touched.
 
                                       *g:simplestartify_health_last*
-The dictionary most recently produced by |:SimpleStartifyHealth|.  The
-"session_writable" member is true only when the directory already exists and
-is writable; saving can still create a valid absent directory.  When both
-"mru_count" and "oldfiles_count" are 0, the recent-files section is empty
-because nothing has been recorded yet, not because of an error.
+The dictionary most recently produced by |:SimpleStartifyHealth|, also
+returned by simplestartify#Health() for scripting.  Members: "ok", "report"
+(the rendered lines), "styles", "width", "session_dir", "session_writable",
+"session_count", "session_leftovers", "mru_count", "mru_file", "mru_persist"
+and "oldfiles_count".
+
+"ok" is false when any check produced an ERROR line, which now includes an
+existing but unwritable session directory.  "session_writable" is true only
+when the directory already exists and is writable; an absent directory is not
+an error, because the first |:SSave| creates it.  When both "mru_count" and
+"oldfiles_count" are 0, the recent-files section is empty because nothing has
+been recorded yet, not because of a failure.
 
                                                   *:SimpleStartifyForget*
 :SimpleStartifyForget [path]

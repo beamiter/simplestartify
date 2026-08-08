@@ -125,7 +125,8 @@ skipped. Sessions are ordered newest first.
 | `:SimpleStartify [style]` | open the dashboard; an explicit style overrides the configured draw |
 | `:SimpleStartifyRefresh` | rebuild the current style without rerolling it |
 | `:SimpleStartifyNextStyle` | make a new eligible random draw while on the dashboard |
-| `:SimpleStartifyHealth` | report eligible styles, session-directory state and where recent files come from |
+| `:SimpleStartifyHealth` | open a report of environment, styles, recent-file sources and session state, one `[OK]`/`[WARN]`/`[ERROR]` line per fact |
+| `:SimpleStartifyClean` | delete leftover `.simplestartify-tmp-*` files from an interrupted save |
 | `:SimpleStartifyForget [path]` | drop a path from the recent list and from `v:oldfiles`; without an argument, the selected dashboard entry |
 | `:Startify` | compatibility alias for `:SimpleStartify` |
 | `:SSave[!] [name]` | save a session; `!` permits replacing an existing name |
@@ -229,7 +230,7 @@ make check
 ```
 
 This compiles every Vim9 `def` and runs the smoke, width/layout, random-choice,
-recent-files, highlighting, and session-safety regression tests.
+recent-files, highlighting, health, and session-safety regression tests.
 
 ## License
 

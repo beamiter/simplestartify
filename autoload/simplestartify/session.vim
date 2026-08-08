@@ -73,6 +73,49 @@ export def List(): list<string>
   return mapnew(stamped, (_, item) => item.name)
 enddef
 
+# A crash between "write the temporary" and "rename it into place" leaves a
+# hidden file that is deliberately invisible to List() and completion.  That
+# is right for the dashboard and wrong for a health check, which is the one
+# place the user should be able to see and clean them.
+export def TempLeftovers(): list<string>
+  var directory = Dir()
+  if empty(directory) || !isdirectory(directory)
+    return []
+  endif
+  var prefix = simplestartify#atomic#PREFIX .. 'tmp-'
+  return filter(globpath(directory, '.*', false, true),
+    (_, path) => stridx(fnamemodify(path, ':t'), prefix) == 0
+          \ && getftype(path) ==# 'file')
+enddef
+
+export def CleanTemporaries(): number
+  var removed = 0
+  for path in TempLeftovers()
+    if delete(path) == 0
+      removed += 1
+    endif
+  endfor
+  return removed
+enddef
+
+export def LastPointerInfo(): dict<any>
+  var pointer = LastPointer()
+  var info = {path: pointer, type: getftype(pointer), name: '', readable: false}
+  if info.type ==# 'file' && filereadable(pointer)
+    var lines = readfile(pointer, '', 1)
+    if !empty(lines) && SafeName(lines[0])
+      info.name = lines[0]
+      info.readable = filereadable(Path(lines[0]))
+    endif
+  endif
+  return info
+enddef
+
+export def LegacyLastType(): string
+  var legacy = Path('__LAST__')
+  return empty(legacy) ? '' : getftype(legacy)
+enddef
+
 export def Complete(lead: string, _line: string, _position: number): list<string>
   return filter(List(), (_, name) => stridx(name, lead) == 0)
 enddef

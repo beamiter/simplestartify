@@ -103,7 +103,8 @@ command! -nargs=? -bar -complete=customlist,simplestartify#CompleteStyle
       \ SimpleStartify call simplestartify#Open(<q-args>)
 command! -nargs=0 -bar SimpleStartifyRefresh call simplestartify#Refresh()
 command! -nargs=0 -bar SimpleStartifyNextStyle call simplestartify#NextStyle()
-command! -nargs=0 -bar SimpleStartifyHealth call simplestartify#Health()
+command! -nargs=0 -bar SimpleStartifyHealth call simplestartify#HealthReport()
+command! -nargs=0 -bar SimpleStartifyClean call simplestartify#CleanSessions()
 command! -nargs=? -bar -complete=file
       \ SimpleStartifyForget call simplestartify#ForgetRecent(<q-args>)
 

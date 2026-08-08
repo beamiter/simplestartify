@@ -672,30 +672,177 @@ export def ForgetRecent(requested: string = '')
   endif
 enddef
 
+def Say(report: list<string>, level: string, fact: string, remedy: string = '')
+  add(report, $'[{level}] {fact}' .. (empty(remedy) ? '' : ' — ' .. remedy))
+enddef
+
+def CheckEnvironment(report: list<string>): bool
+  add(report, 'ENVIRONMENT')
+  var ok = v:version >= 901
+  Say(report, ok ? 'OK' : 'ERROR',
+    printf('Vim %d.%d', v:version / 100, v:version % 100),
+    ok ? '' : 'SimpleStartify needs Vim 9.1 or newer')
+  Say(report, has('textprop') ? 'OK' : 'WARN',
+    has('textprop') ? '+textprop' : '-textprop',
+    has('textprop') ? '' : 'entry highlighting falls back to syntax matches')
+  add(report, '')
+  return ok
+enddef
+
+def CheckStyles(report: list<string>, styles: list<string>, width: number): bool
+  add(report, 'STYLES')
+  var configured = ConfiguredStyle()
+  var known = configured ==# 'random'
+        \ || index(simplestartify#ui#Styles(), configured) >= 0
+  # An unknown name is reported once here instead of only as an error message
+  # on every single draw, which is where it surfaces today.
+  Say(report, known ? 'OK' : 'ERROR', 'g:simplestartify_style = ' .. configured,
+    known ? '' : 'not a known style; every draw falls back to random')
+  var pool = get(g:, 'simplestartify_styles', simplestartify#ui#Styles())
+  Say(report, empty(styles) ? 'ERROR' : 'OK',
+    $'eligible at {width} columns: ' .. join(styles, ', '))
+  if type(pool) == v:t_list && len(styles) < len(pool)
+    Say(report, 'WARN',
+      'some configured styles need a wider window than ' .. width,
+      'widen the window or drop them from g:simplestartify_styles')
+  endif
+  add(report, '')
+  return known && !empty(styles)
+enddef
+
+def CheckRecent(report: list<string>, result: dict<any>): bool
+  add(report, 'RECENT FILES')
+  Say(report, result.mru_count > 0 || result.oldfiles_count > 0 ? 'OK' : 'WARN',
+    printf('%d tracked this session, %d from v:oldfiles',
+      result.mru_count, result.oldfiles_count),
+    result.mru_count > 0 || result.oldfiles_count > 0
+      ? '' : 'open a file and the section fills in immediately')
+  # By far the most common "why is this section empty" answer, and the one
+  # thing the old health check could not say.
+  if exists('+viminfofile') && &viminfofile ==# 'NONE'
+    Say(report, 'WARN', "'viminfofile' is NONE",
+      'v:oldfiles cannot survive a restart; the in-session record still can')
+  elseif &viminfo !~# "'\\d"
+    Say(report, 'WARN', "'viminfo' has no ' entry: " .. string(&viminfo),
+      'v:oldfiles will stay empty; the in-session record still works')
+  endif
+  if !result.mru_persist
+    Say(report, 'WARN', 'recent-file cache disabled',
+      'the list starts empty in every new Vim')
+  else
+    var directory = fnamemodify(result.mru_file, ':h')
+    var writable = isdirectory(directory)
+          \ ? filewritable(directory) == 2
+          \ : true
+    Say(report, writable ? 'OK' : 'ERROR', 'cache: ' .. result.mru_file,
+      writable ? '' : 'its directory is not writable')
+  endif
+  add(report, '')
+  return true
+enddef
+
+def CheckSessions(report: list<string>, result: dict<any>): bool
+  add(report, 'SESSIONS')
+  var directory = result.session_dir
+  if empty(directory)
+    Say(report, 'ERROR', 'no usable session directory',
+      'g:simplestartify_session_dir must be an absolute path below the root')
+    add(report, '')
+    return false
+  endif
+  var ok = true
+  if !isdirectory(directory)
+    Say(report, 'OK', 'directory: ' .. directory,
+      'not created yet; the first :SSave creates it with mode 0700')
+  elseif !result.session_writable
+    ok = false
+    Say(report, 'ERROR', 'directory: ' .. directory, 'not writable')
+  else
+    Say(report, 'OK', printf('directory: %s (%d sessions)',
+      directory, result.session_count))
+  endif
+  if !empty(result.session_leftovers)
+    Say(report, 'WARN',
+      printf('%d leftover .simplestartify-tmp-* file(s)',
+        len(result.session_leftovers)),
+      'a save was interrupted; :SimpleStartifyClean removes them')
+  endif
+  var pointer = simplestartify#session#LastPointerInfo()
+  if empty(pointer.type)
+    Say(report, 'OK', 'no last-session pointer yet')
+  elseif pointer.type !=# 'file'
+    ok = false
+    Say(report, 'ERROR', 'last-session pointer is a ' .. pointer.type,
+      'remove ' .. pointer.path .. '; SimpleStartify refuses to replace it')
+  elseif empty(pointer.name)
+    Say(report, 'WARN', 'last-session pointer is unreadable or invalid',
+      'bare :SLoad! will report that there is no last session')
+  elseif !pointer.readable
+    Say(report, 'WARN', 'last-session pointer names a missing session: '
+      .. pointer.name, 'it will be replaced by the next successful save')
+  else
+    Say(report, 'OK', 'last session: ' .. pointer.name)
+  endif
+  var legacy = simplestartify#session#LegacyLastType()
+  if !empty(legacy)
+    Say(report, 'OK', 'legacy __LAST__ present as a ' .. legacy,
+      'used by bare :SLoad! only when the new pointer is unusable')
+  endif
+  add(report, '')
+  return ok
+enddef
+
 export def Health(): dict<any>
   var width = DashboardWidth()
   var styles = simplestartify#ui#Candidates(
     get(g:, 'simplestartify_styles', simplestartify#ui#Styles()), width)
   var session_dir = simplestartify#session#Dir()
   var mru_file = simplestartify#mru#File()
+  var report: list<string> = []
   var result = {
-    ok: !empty(styles) && !empty(session_dir),
     styles: styles,
+    width: width,
     session_dir: session_dir,
     session_writable: isdirectory(session_dir) && filewritable(session_dir) == 2,
+    session_count: len(simplestartify#session#List()),
+    session_leftovers: simplestartify#session#TempLeftovers(),
     mru_count: simplestartify#mru#Count(),
     mru_file: mru_file,
     mru_persist: Flag('simplestartify_mru_persist', 1) && !empty(mru_file),
     oldfiles_count: exists('v:oldfiles') ? len(v:oldfiles) : 0,
   }
+  # Each check appends its own section and returns whether anything it found
+  # was fatal, so `ok` is the conjunction of the ERROR-level facts rather than
+  # a hand-maintained expression that quietly ignored writability.
+  var ok = CheckEnvironment(report)
+  ok = CheckStyles(report, styles, width) && ok
+  ok = CheckRecent(report, result) && ok
+  ok = CheckSessions(report, result) && ok
+  result.ok = ok
+  result.report = report
   g:simplestartify_health_last = result
-  echomsg '[SimpleStartify] styles: ' .. join(styles, ', ')
-  echomsg '[SimpleStartify] session directory: ' .. session_dir
-  # The single most common "why is my dashboard empty" answer is that viminfo
-  # never persisted anything, so report both sources separately.
-  echomsg '[SimpleStartify] recent files: ' .. result.mru_count
-        \ .. ' tracked, ' .. result.oldfiles_count .. ' from v:oldfiles'
-  echomsg '[SimpleStartify] recent-file cache: '
-        \ .. (result.mru_persist ? mru_file : 'in memory only')
   return result
+enddef
+
+export def HealthReport()
+  var result = Health()
+  var lines = ['SimpleStartify health: ' .. (result.ok ? 'OK' : 'problems found'),
+    ''] + result.report
+  silent keepalt new
+  silent! file [SimpleStartifyHealth]
+  setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile nowrap
+  setlocal modifiable
+  silent! execute 'keepjumps %delete _'
+  setline(1, lines)
+  setlocal nomodifiable nomodified
+  &l:filetype = 'simplestartifyhealth'
+  cursor(1, 1)
+enddef
+
+export def CleanSessions()
+  var removed = simplestartify#session#CleanTemporaries()
+  Notify(removed == 0
+    ? 'no leftover session temporaries'
+    : printf('removed %d leftover session temporar%s',
+        removed, removed == 1 ? 'y' : 'ies'))
 enddef

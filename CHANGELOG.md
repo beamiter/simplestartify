@@ -21,6 +21,14 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- `:SimpleStartifyHealth` now opens a report instead of echoing two lines. It
+  answers "why is my recent list empty" by naming an unusable `'viminfo'`,
+  catches a mistyped `g:simplestartify_style` once instead of erroring on
+  every draw, surfaces leftover `.simplestartify-tmp-*` files from an
+  interrupted save, and reports the state of the last-session pointer. `ok` is
+  now false for any ERROR-level fact, including the existing-but-unwritable
+  session directory it previously computed and ignored.
+- Added `:SimpleStartifyClean` to remove those leftover temporaries.
 - Dashboard entries can now be opened in a horizontal split, a vertical split
   or a new tab with `s`/`<C-x>`, `v`/`<C-v>` and `t`/`<C-t>`, and
   `g:simplestartify_open_action` chooses what plain `<CR>` does. The dashboard
