@@ -128,6 +128,10 @@ augroup SimpleStartify
   if exists('##WinResized')
     autocmd WinResized * call simplestartify#Reflow()
   endif
+  # WinResized is only delivered once Vim reaches its main loop, so a script
+  # that splits and resizes in one go - and any Vim old enough to lack the
+  # event - still needs the window-entry hooks.  Reflow is gated on the stored
+  # width, so a firing that changed nothing costs one getwininfo().
   autocmd WinEnter,BufWinEnter * call simplestartify#Reflow()
   autocmd ColorScheme * call simplestartify#SetupHighlights()
 augroup END

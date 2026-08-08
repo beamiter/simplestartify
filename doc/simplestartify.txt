@@ -68,7 +68,9 @@ current style is removed from that draw.  On an active dashboard,
 default style is configured.
 
 |:SimpleStartifyRefresh| updates the data without changing the style.
-Resizing reflows the same style.  Both operations try to keep the same action
+Resizing reflows the same style from the data already on screen, in every
+window showing a dashboard rather than only the focused one, and only when
+the width actually changed.  Both operations try to keep the same action
 selected.
 
 ==============================================================================

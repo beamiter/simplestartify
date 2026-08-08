@@ -158,16 +158,27 @@ def IsDashboard(): bool
   return get(b:, 'simplestartify', 0) == 1 && &filetype ==# 'startify'
 enddef
 
-def DashboardWidth(): number
-  var width = max([1, winwidth(0)])
-  if IsDashboard()
-    for info in getwininfo()
-      if info.bufnr == bufnr()
-        width = min([width, max([1, info.width])])
-      endif
-    endfor
-  endif
+# The narrowest window showing the buffer wins: the same lines are on screen
+# in all of them, so anything wider would overflow somewhere.
+def BufferWidth(buffer: number): number
+  var width = 0
+  for info in getwininfo()
+    if info.bufnr == buffer
+      var candidate = max([1, info.width])
+      width = width == 0 ? candidate : min([width, candidate])
+    endif
+  endfor
   return width
+enddef
+
+def DashboardWidth(): number
+  if IsDashboard()
+    var width = BufferWidth(bufnr())
+    if width > 0
+      return width
+    endif
+  endif
+  return max([1, winwidth(0)])
 enddef
 
 def ConfigureBuffer(origin: number)
@@ -248,8 +259,21 @@ def InstallMappings(actions: dict<any>)
   b:simplestartify_keys = installed
 enddef
 
-def Render(style: string, selected_key: string = '')
-  var layout = simplestartify#ui#Build(Model(), style, DashboardWidth())
+def Rebuild(): dict<any>
+  b:simplestartify_model = Model()
+  return b:simplestartify_model
+enddef
+
+# Re-render from the cached model.  Everything expensive - stat'ing every
+# recent file, globbing and mtime-sorting the session directory - lives in
+# Model(); a resize changes none of it, so a resize must not pay for it.
+def Layout(style: string, selected_key: string = '')
+  var model: dict<any> = get(b:, 'simplestartify_model', {})
+  if empty(model)
+    model = Rebuild()
+  endif
+  var width = DashboardWidth()
+  var layout = simplestartify#ui#Build(model, style, width)
   setlocal modifiable
   silent! execute 'keepjumps %delete _'
   var lines = get(layout, 'lines', [''])
@@ -261,6 +285,7 @@ def Render(style: string, selected_key: string = '')
     execute $':{len(lines) + 1},$delete _'
   endif
   b:simplestartify_style = style
+  b:simplestartify_width = width
   b:simplestartify_actions = get(layout, 'actions', {})
   setlocal nomodifiable
   setlocal nomodified
@@ -278,6 +303,11 @@ def Render(style: string, selected_key: string = '')
   endif
   cursor(target, 1)
   normal! zz
+enddef
+
+def Render(style: string, selected_key: string = '')
+  Rebuild()
+  Layout(style, selected_key)
 enddef
 
 def CurrentKey(): string
@@ -360,14 +390,36 @@ export def NextStyle()
   var selected = CurrentKey()
   var style = ChooseStyle('random', get(b:, 'simplestartify_style', ''))
   last_style = style
-  Render(style, selected)
+  # Only the deal changed, not the data, so re-lay out the cached model.
+  Layout(style, selected)
+enddef
+
+export def Relayout()
+  if IsDashboard()
+    Layout(get(b:, 'simplestartify_style', 'minimal'), CurrentKey())
+  endif
 enddef
 
 export def Reflow()
-  if IsDashboard()
-    var selected = CurrentKey()
-    Render(get(b:, 'simplestartify_style', 'minimal'), selected)
-  endif
+  # Two things were wrong with checking the *current* buffer here.  A dashboard
+  # resized while focus is elsewhere never re-rendered at all, so its 'nowrap'
+  # lines were silently chopped mid-glyph; and entering the dashboard window
+  # re-ran Model() - a filereadable() per recent file plus a globbed,
+  # mtime-sorted scan of the session directory - even though nothing had
+  # changed.  Walk the windows instead, and do the work only when the width
+  # actually moved.
+  var handled: dict<bool> = {}
+  for info in getwininfo()
+    var buffer = string(info.bufnr)
+    if getbufvar(info.bufnr, 'simplestartify', 0) != 1 || has_key(handled, buffer)
+      continue
+    endif
+    handled[buffer] = true
+    if BufferWidth(info.bufnr) == getbufvar(info.bufnr, 'simplestartify_width', -1)
+      continue
+    endif
+    win_execute(info.winid, 'call simplestartify#Relayout()')
+  endfor
 enddef
 
 export def Move(direction: number)

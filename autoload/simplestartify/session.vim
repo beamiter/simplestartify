@@ -47,13 +47,11 @@ export def Path(name: string): string
   return fnamemodify(path, ':h') ==# directory ? path : ''
 enddef
 
-def ByNewest(left: string, right: string): number
-  var left_time = getftime(left)
-  var right_time = getftime(right)
-  if left_time == right_time
-    return left ==# right ? 0 : (left <# right ? -1 : 1)
+def ByNewest(left: dict<any>, right: dict<any>): number
+  if left.time != right.time
+    return left.time > right.time ? -1 : 1
   endif
-  return left_time > right_time ? -1 : 1
+  return left.name ==# right.name ? 0 : (left.name <# right.name ? -1 : 1)
 enddef
 
 export def List(): list<string>
@@ -65,8 +63,14 @@ export def List(): list<string>
   filter(paths, (_, path) => getftype(path) ==# 'file' && filereadable(path)
         \ && fnamemodify(path, ':t') !=# '__LAST__'
         \ && fnamemodify(path, ':t') !~# '^\.simplestartify-')
-  sort(paths, ByNewest)
-  return mapnew(paths, (_, path) => fnamemodify(path, ':t'))
+  # Decorate, sort, undecorate.  A comparator that calls getftime() itself
+  # stats each file about 2*log2(n) times; with a few hundred sessions that is
+  # thousands of syscalls per draw, and on a network home directory it is the
+  # difference between instant and a visible stall.
+  var stamped = mapnew(paths,
+    (_, path) => ({time: getftime(path), name: fnamemodify(path, ':t')}))
+  sort(stamped, ByNewest)
+  return mapnew(stamped, (_, item) => item.name)
 enddef
 
 export def Complete(lead: string, _line: string, _position: number): list<string>

@@ -21,6 +21,15 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- Fixed a dashboard window resized while focus was elsewhere keeping its old,
+  too-wide content. Reflow now walks the windows showing a dashboard instead
+  of testing the current buffer, so a `nowrap` dashboard is no longer chopped
+  mid-glyph after resizing its neighbour.
+- Reflow now re-lays out a cached model and only when the width actually
+  changed, instead of re-reading every recent file and re-scanning the session
+  directory on every window entry. Session listing stats each file once
+  instead of twice per sort comparison. `:SimpleStartifyRefresh` and the `R`
+  mapping remain the way to pick up new data.
 - Fixed dashboard shortcut letters surviving a refresh. Deleting a session or
   drawing a style with fewer entries left its letter mapped to a lookup that
   matched nothing, so the shadowed normal-mode motion became a silent no-op

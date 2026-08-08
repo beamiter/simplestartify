@@ -69,13 +69,30 @@ endfor
 
 SimpleStartify boxed
 assert_equal('boxed', b:simplestartify_style)
-# Splits change winwidth without changing &columns.  Reflow immediately so
-# every line remains visible in the narrow dashboard window.
+# Splits change winwidth without changing &columns, and the window that
+# shrinks is usually not the focused one.  Assert from the *other* window: the
+# dashboard is 'nowrap', so a missed reflow chops every line mid-glyph.
+var dashboard = bufnr()
 vertical new
+vertical resize 62
+var dashboard_width = getwininfo(bufwinid(dashboard))[0].width
+assert_true(dashboard_width > 0 && dashboard_width < 40, 'width ' .. dashboard_width)
+var before_reflow = getbufvar(dashboard, 'changedtick')
+# WinResized is only delivered at the main loop, which an -es script never
+# reaches, so drive the autocmd's entry point directly.  It used to test the
+# *current* buffer and therefore did nothing at all from here.
+simplestartify#Reflow()
+assert_notequal(before_reflow, getbufvar(dashboard, 'changedtick'))
+assert_true(max(mapnew(getbufline(dashboard, 1, '$'),
+      \ (_, text) => strdisplaywidth(text))) <= dashboard_width)
 wincmd p
-assert_true(max(mapnew(getline(1, '$'), (_, text) => strdisplaywidth(text)))
-      \ <= winwidth(0))
 only
+# An unchanged width must not redraw: reflow exists for resizes, not to
+# rebuild the whole model on every window entry.
+simplestartify#Reflow()
+var settled_ticks = b:changedtick
+simplestartify#Reflow()
+assert_equal(settled_ticks, b:changedtick)
 var before = b:simplestartify_style
 SimpleStartifyNextStyle
 assert_notequal(before, b:simplestartify_style)
