@@ -1,7 +1,19 @@
 vim9script
 
 const RECENT_KEYS = split('123456789', '\zs')
-const SESSION_KEYS = split('abcefghilmopstuvwxyz', '\zs')
+# s, t and v are deliberately absent: they are the split/tab/vsplit verbs on
+# the dashboard, and a session letter that silently stole one of them would be
+# a collision nobody could see.
+const SESSION_KEYS = split('abcefghilmopuwxyz', '\zs')
+
+# How each entry kind is opened per verb.  Sessions are missing on purpose:
+# loading one replaces the whole layout, so "in a split" has no meaning.
+const OPEN_VERBS = {
+  edit: {file: 'edit', new: 'enew'},
+  split: {file: 'split', new: 'new'},
+  vsplit: {file: 'vsplit', new: 'vnew'},
+  tabedit: {file: 'tabedit', new: 'tabnew'},
+}
 const STYLE_GROUPS = {
   minimal: 'SimpleStartifyHeaderMinimal',
   boxed: 'SimpleStartifyHeaderBoxed',
@@ -312,6 +324,14 @@ def InstallMappings(actions: dict<any>)
 
   nnoremap <buffer><silent> <CR> <ScriptCmd>simplestartify#Activate()<CR>
   nnoremap <buffer><silent> <2-LeftMouse> <LeftMouse><ScriptCmd>simplestartify#Activate()<CR>
+  # Both the vim-startify letters and the fzf/telescope control keys, because
+  # muscle memory comes from whichever one the user arrived from.
+  nnoremap <buffer><silent> s <ScriptCmd>simplestartify#Activate('split')<CR>
+  nnoremap <buffer><silent> <C-x> <ScriptCmd>simplestartify#Activate('split')<CR>
+  nnoremap <buffer><silent> v <ScriptCmd>simplestartify#Activate('vsplit')<CR>
+  nnoremap <buffer><silent> <C-v> <ScriptCmd>simplestartify#Activate('vsplit')<CR>
+  nnoremap <buffer><silent> t <ScriptCmd>simplestartify#Activate('tabedit')<CR>
+  nnoremap <buffer><silent> <C-t> <ScriptCmd>simplestartify#Activate('tabedit')<CR>
   nnoremap <buffer><silent> j <ScriptCmd>simplestartify#Move(1)<CR>
   nnoremap <buffer><silent> k <ScriptCmd>simplestartify#Move(-1)<CR>
   nnoremap <buffer><silent> <Tab> <ScriptCmd>simplestartify#Move(1)<CR>
@@ -523,13 +543,26 @@ def ProjectRoot(path: string): string
   return empty(marker) ? '' : fnamemodify(marker, ':h')
 enddef
 
-def OpenFile(path: string)
+def Verb(requested: string): string
+  if has_key(OPEN_VERBS, requested)
+    return requested
+  endif
+  if !empty(requested)
+    return 'edit'
+  endif
+  var configured = get(g:, 'simplestartify_open_action', 'edit')
+  return type(configured) == v:t_string && has_key(OPEN_VERBS, configured)
+        \ ? configured
+        \ : 'edit'
+enddef
+
+def OpenFile(path: string, verb: string)
   if !filereadable(path)
     Notify('file is no longer readable: ' .. path, true)
     Refresh()
     return
   endif
-  execute 'edit ' .. fnameescape(path)
+  execute OPEN_VERBS[verb].file .. ' ' .. fnameescape(path)
   if Flag('simplestartify_change_to_vcs_root', 0)
     var root = ProjectRoot(path)
     if !empty(root)
@@ -542,14 +575,14 @@ def OpenFile(path: string)
   endif
 enddef
 
-def Run(action: dict<any>)
+def Run(action: dict<any>, verb: string)
   var kind = get(action, 'kind', '')
   if kind ==# 'file'
-    OpenFile(get(action, 'path', ''))
+    OpenFile(get(action, 'path', ''), verb)
   elseif kind ==# 'session'
     simplestartify#session#Load(false, get(action, 'name', ''))
   elseif kind ==# 'new'
-    enew
+    execute OPEN_VERBS[verb].new
   elseif kind ==# 'restyle'
     NextStyle()
   elseif kind ==# 'quit'
@@ -557,10 +590,11 @@ def Run(action: dict<any>)
   endif
 enddef
 
-export def Activate()
+export def Activate(requested_verb: string = '')
   if !IsDashboard()
     return
   endif
+  var verb = Verb(requested_verb)
   var actions = get(b:, 'simplestartify_actions', {})
   var action = get(actions, string(line('.')), {})
   if empty(action)
@@ -579,18 +613,19 @@ export def Activate()
     endif
   endif
   if !empty(action)
-    Run(action)
+    Run(action, verb)
   endif
 enddef
 
-export def ActivateKey(key: string)
+export def ActivateKey(key: string, requested_verb: string = '')
   if !IsDashboard()
     return
   endif
+  var verb = Verb(requested_verb)
   for [lnum, action] in items(get(b:, 'simplestartify_actions', {}))
     if get(action, 'key', '') ==# key
       cursor(str2nr(lnum), 1)
-      Run(action)
+      Run(action, verb)
       return
     endif
   endfor

@@ -84,11 +84,20 @@ selected.
 
     <CR>                run the selected action
     double left click   select and run an action
+    s, CTRL-X           run the selected action in a horizontal split
+    v, CTRL-V           run the selected action in a vertical split
+    t, CTRL-T           run the selected action in a new tab
     j, k                next / previous action
     <Tab>, <S-Tab>      next / previous action
     R                   refresh data, keeping style and selection
     d                   confirm and delete the selected session
     D                   forget the selected recent file
+
+The dashboard buffer keeps its window when an entry is opened in a split or a
+tab, so several files can be opened one after another; |<CR>| replaces it.  A
+session ignores the split verbs because loading one replaces the whole
+layout.  "s", "t" and "v" are never handed out as session shortcuts, so a
+session can never silently take one of them over.
 
 Recent entries come from two sources, in this order: the files opened during
 this Vim session, then |v:oldfiles|.  Vim fills |v:oldfiles| once from
@@ -175,6 +184,11 @@ saves the active managed session regardless of this option.
                                         *g:simplestartify_change_to_vcs_root*
 After opening a recent file, use |:lcd| to change to its nearest Git root.
 Both a .git directory and a .git file are recognized.  Default 0.
+
+                                              *g:simplestartify_open_action*
+What |<CR>| and a double click do with the selected entry: "edit" (default),
+"split", "vsplit" or "tabedit".  The "s", "v" and "t" mappings always use
+their own verb regardless of this option.  An unknown value uses "edit".
 
                                               *g:simplestartify_change_to_dir*
 After opening a recent file, use |:lcd| to change to its directory.  Default

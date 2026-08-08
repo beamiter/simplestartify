@@ -59,6 +59,7 @@ let g:simplestartify_session_persistence = 0
 
 let g:simplestartify_change_to_vcs_root = 0
 let g:simplestartify_change_to_dir = 0
+let g:simplestartify_open_action = 'edit'  " or split / vsplit / tabedit
 
 let g:simplestartify_mru_persist = 1
 let g:simplestartify_mru_max = 200    " clamped to 0..5000
@@ -95,11 +96,17 @@ are enabled, the Git root wins when found.
 | `n` | open a new empty buffer |
 | `r` | deal another random style |
 | `q` | quit Vim |
-| `<CR>` / double-click | run the selected entry |
+| `<CR>` / double-click | run the selected entry (see `g:simplestartify_open_action`) |
+| `s` / `<C-x>`, `v` / `<C-v>`, `t` / `<C-t>` | run it in a split, vertical split or new tab |
 | `j` / `k`, `<Tab>` / `<S-Tab>` | move between actionable entries |
 | `R` | refresh recent files and sessions, preserving the style and selection |
 | `d` | confirm and delete the selected session |
 | `D` | forget the selected recent file |
+
+Opening an entry in a split or a tab leaves the dashboard in its own window,
+so you can open several files in a row; `<CR>` replaces it. Sessions ignore
+the split verbs because loading one replaces the whole layout, and `s`, `t`
+and `v` are never used as session shortcuts.
 
 Recent files come from the files this session opened, then from `v:oldfiles`.
 Vim fills `v:oldfiles` once from `viminfo` during startup and never updates it

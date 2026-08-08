@@ -130,6 +130,35 @@ simplestartify#ActivateKey(note_key)
 assert_equal(fnamemodify(TEMP .. '/project/note.txt', ':p'), expand('%:p'))
 assert_equal(fnamemodify(TEMP .. '/project', ':p')->substitute('[\\/]\+$', '', ''), getcwd())
 
+# An entry opens in a split, a vertical split or a tab on demand, and the
+# dashboard stays in its own window so several files can be opened in a row.
+only
+enew!
+SimpleStartify minimal
+var open_key = ''
+for action in values(b:simplestartify_actions)
+  if get(action, 'kind', '') ==# 'file'
+    open_key = action.key
+  endif
+endfor
+assert_notequal('', open_key)
+for [verb, windows, tabs] in [['split', 2, 1], ['vsplit', 2, 1], ['tabedit', 1, 2]]
+  only
+  if tabpagenr('$') > 1
+    tabonly
+  endif
+  enew!
+  SimpleStartify minimal
+  assert_equal(1, winnr('$'), verb)
+  simplestartify#ActivateKey(open_key, verb)
+  assert_equal(windows, winnr('$'), verb)
+  assert_equal(tabs, tabpagenr('$'), verb)
+  assert_notequal('startify', &filetype, verb)
+endfor
+only
+tabonly
+enew!
+
 enew!
 setline(1, 'do not replace me')
 set modified

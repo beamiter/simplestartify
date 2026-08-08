@@ -21,6 +21,12 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- Dashboard entries can now be opened in a horizontal split, a vertical split
+  or a new tab with `s`/`<C-x>`, `v`/`<C-v>` and `t`/`<C-t>`, and
+  `g:simplestartify_open_action` chooses what plain `<CR>` does. The dashboard
+  keeps its window for the split verbs, so several files can be opened in a
+  row. `s`, `t` and `v` were removed from the session shortcut alphabet so a
+  session can never shadow one of them; 17 letters remain against a cap of 13.
 - Fixed `SimpleStartifyKey` never rendering. The documented `[key]` highlight
   competed with a whole-line entry match anchored at column 1, which always
   won Vim's earlier-start priority rule, so setting the group had no effect at

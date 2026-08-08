@@ -40,6 +40,12 @@ def Text(value: any, fallback: string): string
   return type(value) == v:t_string ? value : fallback
 enddef
 
+def Enum(value: any, allowed: list<string>, fallback: string): string
+  return type(value) == v:t_string && index(allowed, value) >= 0
+        \ ? value
+        \ : fallback
+enddef
+
 def StyleList(value: any): list<string>
   if type(value) != v:t_list
     return ['minimal', 'boxed', 'centered', 'terminal']
@@ -72,6 +78,8 @@ g:simplestartify_session_persistence = Flag(
 g:simplestartify_change_to_vcs_root = Flag(
   Legacy('change_to_vcs_root', 0), 0)
 g:simplestartify_change_to_dir = Flag(Legacy('change_to_dir', 0), 0)
+g:simplestartify_open_action = Enum(Legacy('open_action', 'edit'),
+  ['edit', 'split', 'vsplit', 'tabedit'], 'edit')
 
 def DefaultMruFile(): string
   # XDG when the user has opted into it, otherwise beside the session
