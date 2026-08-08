@@ -711,15 +711,19 @@ Run the complete local quality gate from the repository root: >
 
     make check
 <
-It compiles every Vim9 def and runs the smoke, UI/width, random-choice, and
-session-safety test scripts.
+It compiles every Vim9 def and runs the smoke, UI/width, section and filter,
+session-safety, recent-files, highlight and health test scripts.
 
 Limits:
 
 - Recent files must still be readable when the dashboard is drawn.
-- Only Git (.git directory or file) is recognized as a VCS root.
-- Startup normalization clamps recent files to nine and sessions to thirteen,
-  matching the documented shortcut capacity.
+- Only Git (.git directory or file) is recognized as a VCS root, for
+  |g:simplestartify_change_to_vcs_root| and for the "project" section.
+- At most a hundred recent paths are examined per draw, which bounds the
+  stat'ing a "dir" or "project" section can cost.
+- Startup normalization clamps recent files to fifty and sessions to thirteen.
+  Only the first nine recent entries and the seventeen shortcut letters get a
+  marker; the rest are reached with "j"/"k" or |simplestartify-filter|.
 - Session files are sourced Vimscript, not a data-only format; see
   |simplestartify-sessions|.
 
