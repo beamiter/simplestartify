@@ -215,6 +215,18 @@ def ApplyHighlights(layout: dict<any>, style: string)
 enddef
 
 def InstallMappings(actions: dict<any>)
+  # Entry shortcuts are data: a session deleted or a style with fewer entries
+  # means a letter this buffer used to own is now unclaimed.  Installing the
+  # survivors is not enough - the dropped letters stay mapped to a lookup that
+  # finds nothing and returns silently, so motions like `e` and `c` become
+  # dead keys for the life of the buffer.  Remove exactly the keys we
+  # installed, never a plain `mapclear <buffer>`, so a user's own
+  # `FileType startify` mapping is left alone.
+  for stale in get(b:, 'simplestartify_keys', [])
+    silent! execute 'nunmap <buffer> ' .. stale
+  endfor
+  b:simplestartify_keys = []
+
   nnoremap <buffer><silent> <CR> <ScriptCmd>simplestartify#Activate()<CR>
   nnoremap <buffer><silent> <2-LeftMouse> <LeftMouse><ScriptCmd>simplestartify#Activate()<CR>
   nnoremap <buffer><silent> j <ScriptCmd>simplestartify#Move(1)<CR>
@@ -224,13 +236,16 @@ def InstallMappings(actions: dict<any>)
   nnoremap <buffer><silent> R <ScriptCmd>simplestartify#Refresh()<CR>
   nnoremap <buffer><silent> d <ScriptCmd>simplestartify#DeleteCurrentSession()<CR>
   nnoremap <buffer><silent> D <ScriptCmd>simplestartify#ForgetRecent()<CR>
+  var installed: list<string> = []
   for action in values(actions)
     var key = get(action, 'key', '')
     if type(key) == v:t_string && key =~# '^[0-9A-Za-z]$'
       execute $'nnoremap <buffer><silent> {key} '
             \ .. $'<ScriptCmd>simplestartify#ActivateKey({string(key)})<CR>'
+      add(installed, key)
     endif
   endfor
+  b:simplestartify_keys = installed
 enddef
 
 def Render(style: string, selected_key: string = '')

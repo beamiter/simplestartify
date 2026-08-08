@@ -21,6 +21,11 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- Fixed dashboard shortcut letters surviving a refresh. Deleting a session or
+  drawing a style with fewer entries left its letter mapped to a lookup that
+  matched nothing, so the shadowed normal-mode motion became a silent no-op
+  for the life of the buffer. Only keys the dashboard installed are removed,
+  so a user's own `FileType startify` mappings are untouched.
 - Moved the atomic temp-then-rename primitive into
   `autoload/simplestartify/atomic.vim` so the session store and the
   recent-files cache share one implementation and one reserved namespace.

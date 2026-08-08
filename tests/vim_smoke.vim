@@ -44,6 +44,29 @@ assert_match('simplestartify#DeleteCurrentSession', maparg('d', 'n'))
 assert_match('simplestartify#Move', maparg('j', 'n'))
 assert_match('simplestartify#Move', maparg('k', 'n'))
 
+# A refresh must give up the shortcut letters it no longer owns.  A stale
+# buffer-local mapping resolves to no action and returns silently, so the
+# shadowed normal-mode motion is a dead key for the life of the buffer.
+var session_keys = mapnew(
+  filter(values(b:simplestartify_actions),
+    (_, action) => get(action, 'kind', '') ==# 'session'),
+  (_, action) => action.key)
+assert_equal(13, len(session_keys))
+for index in range(2, 12)
+  delete($'{TEMP}/sessions/session-{index}')
+endfor
+SimpleStartifyRefresh
+var live_keys = mapnew(values(b:simplestartify_actions), (_, action) => action.key)
+assert_equal(2, len(filter(copy(live_keys), (_, key) => index(session_keys, key) >= 0)))
+for key in session_keys
+  if index(live_keys, key) < 0
+    assert_equal('', maparg(key, 'n'), 'stale mapping for ' .. key)
+  endif
+endfor
+for key in live_keys
+  assert_match('simplestartify#ActivateKey', maparg(key, 'n'), 'live key ' .. key)
+endfor
+
 SimpleStartify boxed
 assert_equal('boxed', b:simplestartify_style)
 # Splits change winwidth without changing &columns.  Reflow immediately so
