@@ -11,13 +11,14 @@ CONTENTS                                             *simplestartify-contents*
     2. Requirements .............. |simplestartify-requirements|
     3. Styles and random draws ... |simplestartify-styles|
     4. Dashboard keys ............ |simplestartify-keys|
-    5. Options ................... |simplestartify-options|
-    6. Commands .................. |simplestartify-commands|
-    7. Session safety ............ |simplestartify-sessions|
-    8. Compatibility and events . |simplestartify-compatibility|
-    9. Plug mappings ............. |simplestartify-mappings|
-   10. Highlights ................ |simplestartify-highlights|
-   11. Testing and limits ........ |simplestartify-testing|
+    5. Recent files .............. |simplestartify-recent|
+    6. Options ................... |simplestartify-options|
+    7. Commands .................. |simplestartify-commands|
+    8. Session safety ............ |simplestartify-sessions|
+    9. Compatibility and events . |simplestartify-compatibility|
+   10. Plug mappings ............. |simplestartify-mappings|
+   11. Highlights ................ |simplestartify-highlights|
+   12. Testing and limits ........ |simplestartify-testing|
 
 ==============================================================================
 1. INTRODUCTION                                  *simplestartify-introduction*
@@ -85,17 +86,45 @@ selected.
     <Tab>, <S-Tab>      next / previous action
     R                   refresh data, keeping style and selection
     d                   confirm and delete the selected session
+    D                   forget the selected recent file
 
-Recent entries are taken from |v:oldfiles|.  Unreadable files and duplicate
-absolute paths are skipped.  Sessions are ordered by modification time,
-newest first.
+Recent entries come from two sources, in this order: the files opened during
+this Vim session, then |v:oldfiles|.  Vim fills |v:oldfiles| once from
+'viminfo' while starting up and never updates it afterwards, so without the
+in-session record a dashboard reopened by |:SClose| would list only files from
+earlier sessions, and a Vim started with "-i NONE" or an empty 'viminfo' would
+list nothing at all.  See |simplestartify-recent|.
+
+Unreadable files and duplicate absolute paths are skipped.  Sessions are
+ordered by modification time, newest first.
 
 Opening a recent file may change the window-local directory; see
 |g:simplestartify_change_to_vcs_root| and
 |g:simplestartify_change_to_dir|.
 
 ==============================================================================
-5. OPTIONS                                           *simplestartify-options*
+5. RECENT FILES                                       *simplestartify-recent*
+
+The recent-files record is a plain text cache, one line per file, formatted as
+the epoch time of the last visit, a tab, and an absolute path.  A buffer is
+recorded at |BufWinEnter| and |BufWritePost| when it is listed, has an empty
+'buftype', is not a preview window, and names a readable file.  The dashboard,
+scratch buffers, help, quickfix, terminals and unwritten new files are
+therefore never recorded, and neither is anything inside
+|g:simplestartify_session_dir|.
+
+Saving re-reads the file and merges it, keeping the newer visit per path, so
+several Vim instances sharing one cache do not discard each other's history.
+The write goes to a hidden ".simplestartify-tmp-*" neighbour and is renamed
+into place, exactly like a session write; a partial write can never replace a
+good cache.  A line that does not parse is dropped, so a truncated or
+hand-edited cache costs entries rather than raising an error.
+
+This is a cache and it is safe to delete.  Nothing on the dashboard depends on
+it existing, and |g:simplestartify_mru_persist| turns it off entirely.
+
+==============================================================================
+6. OPTIONS                                           *simplestartify-options*
 
 Set options before the plugin loads.  Boolean options accept a Boolean or a
 Number.  Invalid values use the stated default.
@@ -150,8 +179,26 @@ After opening a recent file, use |:lcd| to change to its directory.  Default
 0.  When both directory options are enabled, a found Git root wins; otherwise
 this option supplies the fallback.
 
+                                              *g:simplestartify_mru_persist*
+Write the in-session recent-file record to |g:simplestartify_mru_file| at
+|VimLeavePre| and read it back on first use.  Default 1.  With 0 the record is
+kept in memory only, so it still fixes the mid-session case but starts empty
+in every new Vim.
+
+                                                  *g:simplestartify_mru_max*
+Maximum number of paths kept in that record.  Default 200, normalized to the
+range 0..5000.  This is the store size, not the number of dashboard entries;
+|g:simplestartify_recent_count| still limits what is displayed.
+
+                                                 *g:simplestartify_mru_file*
+Path of the record.  Default "$XDG_STATE_HOME/simplestartify/mru" when
+$XDG_STATE_HOME is set, otherwise "~/.vim/simplestartify-mru".  The containing
+directory is created with mode 0700 when absent.  Setting this to an empty
+string disables persistence in the same way as
+|g:simplestartify_mru_persist|.
+
 ==============================================================================
-6. COMMANDS                                         *simplestartify-commands*
+7. COMMANDS                                         *simplestartify-commands*
 
                                                         *:SimpleStartify*
 :SimpleStartify [style]
@@ -174,15 +221,26 @@ this option supplies the fallback.
 
                                                   *:SimpleStartifyHealth*
 :SimpleStartifyHealth
-        Echo the styles currently eligible at this width and the resolved
-        session directory.  The result is also stored in
-        |g:simplestartify_health_last| as a dictionary with "ok", "styles",
-        "session_dir", and "session_writable" entries.
+        Echo the styles currently eligible at this width, the resolved session
+        directory, and how many recent files come from each source.  The
+        result is also stored in |g:simplestartify_health_last| as a
+        dictionary with "ok", "styles", "session_dir", "session_writable",
+        "mru_count", "mru_file", "mru_persist" and "oldfiles_count" entries.
 
                                       *g:simplestartify_health_last*
 The dictionary most recently produced by |:SimpleStartifyHealth|.  The
 "session_writable" member is true only when the directory already exists and
-is writable; saving can still create a valid absent directory.
+is writable; saving can still create a valid absent directory.  When both
+"mru_count" and "oldfiles_count" are 0, the recent-files section is empty
+because nothing has been recorded yet, not because of an error.
+
+                                                  *:SimpleStartifyForget*
+:SimpleStartifyForget [path]
+        Remove [path] from the recent-files record and from |v:oldfiles|, so
+        it does not come back on the next draw.  Without [path], forget the
+        recent file selected on the dashboard; this is what the "D" mapping
+        does.  A path that was not listed reports an error instead of
+        silently succeeding.  See |simplestartify-recent|.
 
                                                                *:Startify*
 :Startify
@@ -218,7 +276,7 @@ is writable; saving can still create a valid absent directory.
         unwritable managed session, or any save failure, aborts the close.
 
 ==============================================================================
-7. SESSION SAFETY                                  *simplestartify-sessions*
+8. SESSION SAFETY                                  *simplestartify-sessions*
 
 Session operations fail closed around one configured directory:
 
@@ -295,7 +353,7 @@ successful load then records the target under the new pointer.  "__LAST__" is
 always omitted from the dashboard and completion list.
 
 ==============================================================================
-8. COMPATIBILITY AND EVENTS                 *simplestartify-compatibility*
+9. COMPATIBILITY AND EVENTS                 *simplestartify-compatibility*
 
 The dashboard uses 'filetype' "startify".  The commands |:Startify|,
 |:SSave|, |:SLoad|, |:SDelete| and |:SClose| preserve vim-startify's familiar
@@ -331,7 +389,7 @@ The three ready events are emitted in the order shown on every successful
 open.  They use <nomodeline>.
 
 ==============================================================================
-9. PLUG MAPPINGS                                   *simplestartify-mappings*
+10. PLUG MAPPINGS                                   *simplestartify-mappings*
 
 <Plug>(simplestartify-open)              *<Plug>(simplestartify-open)*
         Open the dashboard.
@@ -342,10 +400,13 @@ open.  They use <nomodeline>.
 <Plug>(simplestartify-next-style)        *<Plug>(simplestartify-next-style)*
         Draw another style.
 
+<Plug>(simplestartify-forget)            *<Plug>(simplestartify-forget)*
+        Forget the selected recent file.
+
 No user-facing global key is claimed automatically.
 
 ==============================================================================
-10. HIGHLIGHTS                                    *simplestartify-highlights*
+11. HIGHLIGHTS                                    *simplestartify-highlights*
 
 Override any group after the plugin loads.  Default links are shown in
 parentheses.
@@ -365,7 +426,7 @@ The links are re-established on |ColorScheme| with |:highlight-default|, so a
 colorscheme or vimrc may define any of them explicitly.
 
 ==============================================================================
-11. TESTING AND LIMITS                              *simplestartify-testing*
+12. TESTING AND LIMITS                              *simplestartify-testing*
 
 Run the complete local quality gate from the repository root: >
 
@@ -376,7 +437,7 @@ session-safety test scripts.
 
 Limits:
 
-- Recent files come only from |v:oldfiles| and must still be readable.
+- Recent files must still be readable when the dashboard is drawn.
 - Only Git (.git directory or file) is recognized as a VCS root.
 - Startup normalization clamps recent files to nine and sessions to thirteen,
   matching the documented shortcut capacity.

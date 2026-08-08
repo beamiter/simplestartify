@@ -59,6 +59,11 @@ let g:simplestartify_session_persistence = 0
 
 let g:simplestartify_change_to_vcs_root = 0
 let g:simplestartify_change_to_dir = 0
+
+let g:simplestartify_mru_persist = 1
+let g:simplestartify_mru_max = 200    " clamped to 0..5000
+" $XDG_STATE_HOME/simplestartify/mru when XDG_STATE_HOME is set:
+let g:simplestartify_mru_file = '~/.vim/simplestartify-mru'
 ```
 
 `g:simplestartify_style` may be `random` or one named style.
@@ -94,9 +99,17 @@ are enabled, the Git root wins when found.
 | `j` / `k`, `<Tab>` / `<S-Tab>` | move between actionable entries |
 | `R` | refresh recent files and sessions, preserving the style and selection |
 | `d` | confirm and delete the selected session |
+| `D` | forget the selected recent file |
 
-Recent files come from `v:oldfiles`; missing files and duplicate absolute paths
-are skipped. Sessions are ordered newest first.
+Recent files come from the files this session opened, then from `v:oldfiles`.
+Vim fills `v:oldfiles` once from `viminfo` during startup and never updates it
+afterwards, so a dashboard reopened by `:SClose` would otherwise list only
+files from earlier sessions, and a Vim started with `-i NONE` or an empty
+`viminfo` would list nothing at all. The in-session record is kept in memory
+and, unless `g:simplestartify_mru_persist` is 0, written to
+`g:simplestartify_mru_file` at `VimLeavePre`. It is a cache: deleting it costs
+history and nothing else. Missing files and duplicate absolute paths are
+skipped. Sessions are ordered newest first.
 
 ## Commands
 
@@ -105,7 +118,8 @@ are skipped. Sessions are ordered newest first.
 | `:SimpleStartify [style]` | open the dashboard; an explicit style overrides the configured draw |
 | `:SimpleStartifyRefresh` | rebuild the current style without rerolling it |
 | `:SimpleStartifyNextStyle` | make a new eligible random draw while on the dashboard |
-| `:SimpleStartifyHealth` | report eligible styles and session-directory state |
+| `:SimpleStartifyHealth` | report eligible styles, session-directory state and where recent files come from |
+| `:SimpleStartifyForget [path]` | drop a path from the recent list and from `v:oldfiles`; without an argument, the selected dashboard entry |
 | `:Startify` | compatibility alias for `:SimpleStartify` |
 | `:SSave[!] [name]` | save a session; `!` permits replacing an existing name |
 | `:SLoad [name]` | load a named session, or prompt; refuse when listed buffers are modified |
@@ -127,7 +141,8 @@ to a readable regular session in the same directory. `__LAST__` itself is
 never shown on the dashboard or in completion.
 
 The plugin also defines `<Plug>(simplestartify-open)`,
-`<Plug>(simplestartify-refresh)`, and `<Plug>(simplestartify-next-style)`.
+`<Plug>(simplestartify-refresh)`, `<Plug>(simplestartify-next-style)`, and
+`<Plug>(simplestartify-forget)`.
 
 ## Session safety
 
@@ -203,7 +218,7 @@ make check
 ```
 
 This compiles every Vim9 `def` and runs the smoke, width/layout, random-choice,
-and session-safety regression tests.
+recent-files, and session-safety regression tests.
 
 ## License
 

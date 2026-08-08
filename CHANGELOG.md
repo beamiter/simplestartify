@@ -2,6 +2,29 @@
 
 All notable changes to SimpleStartify are documented here.
 
+## Unreleased
+
+- Recent files are now tracked as they are opened instead of being read only
+  from `v:oldfiles`, which Vim freezes at startup and never updates. Files
+  opened during this session appear on the dashboard immediately, including in
+  the mid-session `:SClose` flow, and the section is no longer permanently
+  empty under `vim -i NONE`, an empty `'viminfo'`, a fresh container, or a
+  first-ever launch. In-session entries rank ahead of `v:oldfiles`.
+- Added `g:simplestartify_mru_persist`, `g:simplestartify_mru_max`, and
+  `g:simplestartify_mru_file` for that record. It is written atomically at
+  `VimLeavePre` and merged with whatever another Vim instance wrote, so
+  concurrent instances do not discard each other's history. A cache that
+  cannot be parsed or written costs entries, never an error or a lost session.
+- Added `:SimpleStartifyForget [path]`, `<Plug>(simplestartify-forget)`, and
+  the `D` dashboard mapping, which drop a file from the record and from
+  `v:oldfiles` so it does not return on the next draw.
+- `:SimpleStartifyHealth` now reports the recent-file count from each source
+  and the resolved cache path, which is the answer to "why is this section
+  empty".
+- Moved the atomic temp-then-rename primitive into
+  `autoload/simplestartify/atomic.vim` so the session store and the
+  recent-files cache share one implementation and one reserved namespace.
+
 ## 0.1.0 - 2026-08-07
 
 - Initial Vim9 release with four responsive layouts: `minimal`, `boxed`,

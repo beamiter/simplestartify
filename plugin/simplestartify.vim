@@ -73,6 +73,19 @@ g:simplestartify_change_to_vcs_root = Flag(
   Legacy('change_to_vcs_root', 0), 0)
 g:simplestartify_change_to_dir = Flag(Legacy('change_to_dir', 0), 0)
 
+def DefaultMruFile(): string
+  # XDG when the user has opted into it, otherwise beside the session
+  # directory so everything this plugin stores lives in one familiar place.
+  return empty($XDG_STATE_HOME)
+        \ ? '~/.vim/simplestartify-mru'
+        \ : $XDG_STATE_HOME .. '/simplestartify/mru'
+enddef
+
+g:simplestartify_mru_persist = Flag(Legacy('mru_persist', 1), 1)
+g:simplestartify_mru_max = Clamp(Legacy('mru_max', 200), 200, 0, 5000)
+g:simplestartify_mru_file = Text(
+  Legacy('mru_file', DefaultMruFile()), DefaultMruFile())
+
 # Prevent vim-startify from double-registering its VimEnter hook if both
 # plugins happen to be present on runtimepath during a migration.
 g:loaded_startify = 1
@@ -83,6 +96,8 @@ command! -nargs=? -bar -complete=customlist,simplestartify#CompleteStyle
 command! -nargs=0 -bar SimpleStartifyRefresh call simplestartify#Refresh()
 command! -nargs=0 -bar SimpleStartifyNextStyle call simplestartify#NextStyle()
 command! -nargs=0 -bar SimpleStartifyHealth call simplestartify#Health()
+command! -nargs=? -bar -complete=file
+      \ SimpleStartifyForget call simplestartify#ForgetRecent(<q-args>)
 
 # vim-startify compatible command surface.
 command! -nargs=0 -bar Startify call simplestartify#Open()
@@ -97,12 +112,17 @@ command! -nargs=0 -bar -bang SClose call simplestartify#session#Close(<bang>0)
 nnoremap <silent> <Plug>(simplestartify-open) <Cmd>SimpleStartify<CR>
 nnoremap <silent> <Plug>(simplestartify-refresh) <Cmd>SimpleStartifyRefresh<CR>
 nnoremap <silent> <Plug>(simplestartify-next-style) <Cmd>SimpleStartifyNextStyle<CR>
+nnoremap <silent> <Plug>(simplestartify-forget) <Cmd>SimpleStartifyForget<CR>
 
 simplestartify#SetupHighlights()
 
 augroup SimpleStartify
   autocmd!
   autocmd VimEnter * call simplestartify#AutoOpen()
+  autocmd BufWinEnter,BufWritePost * call simplestartify#mru#Touch()
+  # Registered before the session hook so a failing recent-files write can
+  # never cost the user their session; mru#Save() swallows its own errors.
+  autocmd VimLeavePre * call simplestartify#mru#Save()
   autocmd VimLeavePre * call simplestartify#session#Persist()
   autocmd VimResized * call simplestartify#Reflow()
   if exists('##WinResized')

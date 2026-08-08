@@ -62,10 +62,17 @@ def RecentFiles(): list<dict<any>>
   var out: list<dict<any>> = []
   var seen: dict<bool> = {}
   var limit = min([Count('simplestartify_recent_count', 7, len(RECENT_KEYS)), len(RECENT_KEYS)])
-  if !exists('v:oldfiles') || limit == 0
+  if limit == 0
     return out
   endif
-  for candidate in v:oldfiles
+  # The in-session record comes first: v:oldfiles is frozen at startup, so a
+  # file opened since then exists only there, and it is by definition more
+  # recent than anything viminfo remembers.
+  var candidates: list<any> = simplestartify#mru#List()
+  if exists('v:oldfiles') && type(v:oldfiles) == v:t_list
+    extend(candidates, v:oldfiles)
+  endif
+  for candidate in candidates
     if type(candidate) != v:t_string || empty(candidate)
       continue
     endif
@@ -119,7 +126,7 @@ def Model(): dict<any>
       {key: 'r', kind: 'restyle', label: 'roll another UI style'},
       {key: 'q', kind: 'quit', label: 'quit'},
     ],
-    footer: '<Enter> open  j/k move  r restyle  R refresh  d delete session',
+    footer: '<Enter> open  j/k move  r restyle  R refresh  d session  D forget',
   }
 enddef
 
@@ -216,6 +223,7 @@ def InstallMappings(actions: dict<any>)
   nnoremap <buffer><silent> <S-Tab> <ScriptCmd>simplestartify#Move(-1)<CR>
   nnoremap <buffer><silent> R <ScriptCmd>simplestartify#Refresh()<CR>
   nnoremap <buffer><silent> d <ScriptCmd>simplestartify#DeleteCurrentSession()<CR>
+  nnoremap <buffer><silent> D <ScriptCmd>simplestartify#ForgetRecent()<CR>
   for action in values(actions)
     var key = get(action, 'key', '')
     if type(key) == v:t_string && key =~# '^[0-9A-Za-z]$'
@@ -465,19 +473,55 @@ export def DeleteCurrentSession()
   endif
 enddef
 
+export def ForgetRecent(requested: string = '')
+  var path = requested
+  if empty(path)
+    if !IsDashboard()
+      Notify('name a file to forget, or run this on the dashboard', true)
+      return
+    endif
+    var action = get(get(b:, 'simplestartify_actions', {}), string(line('.')), {})
+    if get(action, 'kind', '') !=# 'file'
+      Notify('select a recent file first', true)
+      return
+    endif
+    path = get(action, 'path', '')
+  endif
+  var absolute = fnamemodify(expand(path), ':p')
+  if !simplestartify#mru#Forget(absolute)
+    Notify('not a recent file: ' .. DisplayPath(absolute), true)
+    return
+  endif
+  Notify('forgotten: ' .. DisplayPath(absolute))
+  if IsDashboard()
+    Refresh()
+  endif
+enddef
+
 export def Health(): dict<any>
   var width = DashboardWidth()
   var styles = simplestartify#ui#Candidates(
     get(g:, 'simplestartify_styles', simplestartify#ui#Styles()), width)
   var session_dir = simplestartify#session#Dir()
+  var mru_file = simplestartify#mru#File()
   var result = {
     ok: !empty(styles) && !empty(session_dir),
     styles: styles,
     session_dir: session_dir,
     session_writable: isdirectory(session_dir) && filewritable(session_dir) == 2,
+    mru_count: simplestartify#mru#Count(),
+    mru_file: mru_file,
+    mru_persist: Flag('simplestartify_mru_persist', 1) && !empty(mru_file),
+    oldfiles_count: exists('v:oldfiles') ? len(v:oldfiles) : 0,
   }
   g:simplestartify_health_last = result
   echomsg '[SimpleStartify] styles: ' .. join(styles, ', ')
   echomsg '[SimpleStartify] session directory: ' .. session_dir
+  # The single most common "why is my dashboard empty" answer is that viminfo
+  # never persisted anything, so report both sources separately.
+  echomsg '[SimpleStartify] recent files: ' .. result.mru_count
+        \ .. ' tracked, ' .. result.oldfiles_count .. ' from v:oldfiles'
+  echomsg '[SimpleStartify] recent-file cache: '
+        \ .. (result.mru_persist ? mru_file : 'in memory only')
   return result
 enddef

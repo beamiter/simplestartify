@@ -4,6 +4,9 @@ set nomore
 let s:root = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
 execute 'set runtimepath^=' .. fnameescape(s:root)
 
+" Never let the compile pass write a recent-files cache into a real $HOME.
+let g:simplestartify_mru_persist = 0
+
 for s:plugin in glob(s:root .. '/plugin/**/*.vim', 0, 1)
   execute 'source ' .. fnameescape(s:plugin)
 endfor

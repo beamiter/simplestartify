@@ -20,6 +20,7 @@ g:simplestartify_style = 'random'
 g:simplestartify_avoid_repeat = 1
 g:simplestartify_session_count = 13
 g:simplestartify_session_dir = TEMP .. '/sessions'
+g:simplestartify_mru_file = TEMP .. '/mru'
 execute 'source ' .. fnameescape(ROOT .. '/plugin/simplestartify.vim')
 
 for command_name in ['SimpleStartify', 'SimpleStartifyRefresh',
@@ -70,12 +71,22 @@ assert_true(simplestartify#session#Save(true, 'origin-check'))
 assert_equal(fnamemodify(TEMP .. '/origin-b.txt', ':p'), expand('%:p'))
 
 # Recent entries are live actions, and opening one applies the configured VCS
-# root without involving a shell command.
+# root without involving a shell command.  Files this session touched outrank
+# v:oldfiles, which Vim froze at startup and never updates.
 insert(v:oldfiles, TEMP .. '/project/note.txt', 0)
 g:simplestartify_change_to_vcs_root = 1
 SimpleStartify minimal
 assert_equal('file', get(get(b:simplestartify_actions, '5', {}), 'kind', ''))
-simplestartify#ActivateKey('1')
+assert_equal(fnamemodify(TEMP .. '/origin-b.txt', ':p'),
+  get(get(b:simplestartify_actions, '5', {}), 'path', ''))
+var note_key = ''
+for action in values(b:simplestartify_actions)
+  if get(action, 'path', '') ==# fnamemodify(TEMP .. '/project/note.txt', ':p')
+    note_key = action.key
+  endif
+endfor
+assert_notequal('', note_key)
+simplestartify#ActivateKey(note_key)
 assert_equal(fnamemodify(TEMP .. '/project/note.txt', ':p'), expand('%:p'))
 assert_equal(fnamemodify(TEMP .. '/project', ':p')->substitute('[\\/]\+$', '', ''), getcwd())
 

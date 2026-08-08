@@ -10,6 +10,7 @@ mkdir(TEMP, 'p')
 execute 'set runtimepath^=' .. fnameescape(ROOT)
 g:simplestartify_auto_open = 0
 g:simplestartify_session_dir = TEMP .. '/sessions'
+g:simplestartify_mru_persist = 0
 g:simplestartify_session_persistence = 1
 execute 'source ' .. fnameescape(ROOT .. '/plugin/simplestartify.vim')
 

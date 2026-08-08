@@ -4,8 +4,6 @@ vim9script
 # basenames inside the configured directory; neither command arguments nor a
 # crafted completion value can escape it.
 
-var session_random = srand()
-
 def Notify(message: string, error: bool = false)
   execute error ? 'echohl ErrorMsg' : 'echohl ModeMsg'
   echomsg '[SimpleStartify] ' .. message
@@ -97,14 +95,9 @@ def EnsureDir(): bool
 enddef
 
 def HiddenTemporary(directory: string): string
-  for attempt in range(64)
-    var candidate = $'{directory}/.simplestartify-tmp-{getpid()}-'
-          \ .. $'{localtime()}-{rand(session_random)}-{attempt}'
-    if empty(getftype(candidate))
-      return candidate
-    endif
-  endfor
-  return ''
+  # Shared with the recent-files cache so both writers use one reserved
+  # namespace; List() below filters exactly that prefix out of the dashboard.
+  return simplestartify#atomic#Temporary(directory)
 enddef
 
 def LastPointer(): string
@@ -147,13 +140,7 @@ def RecordLast(name: string)
     Notify('last-session pointer is not a regular file: ' .. pointer, true)
     return
   endif
-  var temporary = HiddenTemporary(Dir())
-  if empty(temporary)
-    Notify('could not allocate last-session pointer', true)
-    return
-  endif
-  if writefile([name], temporary, 's') != 0 || rename(temporary, pointer) != 0
-    delete(temporary)
+  if !simplestartify#atomic#Replace([name], pointer)
     Notify('could not update last-session pointer', true)
   endif
 enddef
