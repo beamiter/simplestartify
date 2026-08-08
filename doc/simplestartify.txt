@@ -753,7 +753,8 @@ Run the complete local quality gate from the repository root: >
     make check
 <
 It compiles every Vim9 def and runs the smoke, UI/width, section and filter,
-session-safety, recent-files, highlight and health test scripts.
+session-safety, recent-files, highlight, health, window-management and
+vim-startify compatibility test scripts.
 
 Limits:
 

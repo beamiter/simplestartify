@@ -353,8 +353,8 @@ make check
 ```
 
 This compiles every Vim9 `def` and runs the smoke, width/layout, random-choice,
-section and filter, recent-files, highlighting, health, and session-safety
-regression tests.
+section and filter, recent-files, highlighting, health, session-safety,
+window-management and vim-startify compatibility regression tests.
 
 ## License
 
