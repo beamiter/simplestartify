@@ -17,7 +17,10 @@ All notable changes to SimpleStartify are documented here.
   cannot be parsed or written costs entries, never an error or a lost session.
 - Added `:SimpleStartifyForget [path]`, `<Plug>(simplestartify-forget)`, and
   the `D` dashboard mapping, which drop a file from the record and from
-  `v:oldfiles` so it does not return on the next draw.
+  `v:oldfiles` so it does not return on the next draw. The removal also
+  survives the merge-and-rewrite the cache performs at `VimLeavePre`, so a
+  forgotten path does not reappear in the next Vim either; opening the file
+  again is what records it once more.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".

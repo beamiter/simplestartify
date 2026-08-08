@@ -16,6 +16,15 @@ var entries: list<dict<any>> = []
 var sequence = 0
 var loaded = false
 
+# Paths the user explicitly forgot during this session.  Removing an entry from
+# `entries` alone is not enough: every merge with the on-disk cache - both the
+# lazy Load() and the re-read Store() performs so a sibling Vim's work is not
+# discarded - would find the path still on disk and put it straight back, so
+# :SimpleStartifyForget would silently undo itself at VimLeavePre.  A merge
+# therefore skips anything listed here, and only re-recording the file (opening
+# it again) clears its tombstone.
+var forgotten: dict<bool> = {}
+
 def Flag(name: string, fallback: number): bool
   var value = get(g:, name, fallback)
   if type(value) == v:t_bool
@@ -92,6 +101,9 @@ def Merge(extra: list<dict<any>>)
   var index: dict<number> = {}
   var merged: list<dict<any>> = []
   for entry in entries + extra
+    if has_key(forgotten, entry.path)
+      continue
+    endif
     if has_key(index, entry.path)
       var known = merged[index[entry.path]]
       if Newest(entry, known) < 0
@@ -128,6 +140,11 @@ enddef
 
 def Record(path: string, when: number)
   Load()
+  # Opening the file again is a deliberate act that outranks the earlier
+  # "forget this": drop the tombstone so the entry can persist normally.
+  if has_key(forgotten, path)
+    remove(forgotten, path)
+  endif
   sequence += 1
   var found = index(mapnew(entries, (_, entry) => entry.path), path)
   if found >= 0
@@ -177,7 +194,13 @@ export def Forget(requested: string): bool
   var before = len(entries)
   filter(entries, (_, entry) => entry.path !=# path)
   var dropped = len(entries) != before
-  return ForgetOldfile(path) || dropped
+  var oldfile = ForgetOldfile(path)
+  # Only a forget that actually removed something leaves a tombstone, so a
+  # mistyped path stays the no-op it reports itself to be.
+  if dropped || oldfile
+    forgotten[path] = true
+  endif
+  return oldfile || dropped
 enddef
 
 export def List(): list<string>

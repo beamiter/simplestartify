@@ -100,6 +100,26 @@ writefile(['nonsense', "0\t" .. GAMMA, "12\trelative/path", "\tleading tab",
 assert_true(simplestartify#mru#Save())
 assert_equal([GAMMA, ALPHA, DELTA], simplestartify#mru#List())
 
+# Forgetting a path that is already in the on-disk cache must stick: Save()
+# re-merges that cache, and without a tombstone the entry the user just
+# dropped is written straight back and returns on the next launch.
+assert_match(escape(GAMMA, '\.'), join(readfile(CACHE), "\n"))
+assert_true(simplestartify#mru#Forget(GAMMA))
+assert_equal([ALPHA, DELTA], simplestartify#mru#List())
+assert_true(simplestartify#mru#Save())
+assert_notmatch(escape(GAMMA, '\.'), join(readfile(CACHE), "\n"))
+assert_equal([ALPHA, DELTA], simplestartify#mru#List())
+
+# A tombstone is not a permanent ban: opening the file again records it anew
+# and it persists like any other entry.
+execute 'edit ' .. fnameescape(GAMMA)
+assert_equal([GAMMA, ALPHA, DELTA], simplestartify#mru#List())
+assert_true(simplestartify#mru#Save())
+assert_match(escape(GAMMA, '\.'), join(readfile(CACHE), "\n"))
+
+# A forget that removed nothing reports so and leaves no tombstone behind.
+assert_false(simplestartify#mru#Forget(TEMP .. '/never-seen.txt'))
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

@@ -299,7 +299,10 @@ been recorded yet, not because of a failure.
         it does not come back on the next draw.  Without [path], forget the
         recent file selected on the dashboard; this is what the "D" mapping
         does.  A path that was not listed reports an error instead of
-        silently succeeding.  See |simplestartify-recent|.
+        silently succeeding.  The removal also survives the cache write at
+        |VimLeavePre|, which re-reads the cache before rewriting it: a
+        forgotten path is never merged back in, and only opening the file
+        again records it once more.  See |simplestartify-recent|.
 
                                                                *:Startify*
 :Startify
