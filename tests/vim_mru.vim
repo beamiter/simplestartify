@@ -16,7 +16,8 @@ const CACHE = TEMP .. '/state/mru'
 const ALPHA = TEMP .. '/alpha.txt'
 const BETA = TEMP .. '/beta.txt'
 const GAMMA = TEMP .. '/gamma.txt'
-for path in [ALPHA, BETA, GAMMA]
+const DELTA = TEMP .. '/delta.txt'
+for path in [ALPHA, BETA, GAMMA, DELTA]
   writefile(['x'], path)
 endfor
 
@@ -88,9 +89,16 @@ assert_true(simplestartify#mru#Save())
 assert_equal([GAMMA, ALPHA], simplestartify#mru#List())
 
 # A corrupt or hand-edited cache degrades to "fewer entries", never an error.
-writefile(['nonsense', "0\t" .. GAMMA, "12\trelative/path"], CACHE)
+# This has to go through Save(), which re-reads the file: List() memoises the
+# first Load() and would never open the cache again, so asserting on it here
+# would compare the in-memory list against itself and pass no matter what the
+# parser did.  The four malformed lines are dropped and the one valid line is
+# merged in, which is only observable if FromDisk() actually ran.
 g:simplestartify_mru_max = 200
-assert_equal([GAMMA, ALPHA], simplestartify#mru#List())
+writefile(['nonsense', "0\t" .. GAMMA, "12\trelative/path", "\tleading tab",
+  (localtime() - 3600) .. "\t" .. DELTA], CACHE)
+assert_true(simplestartify#mru#Save())
+assert_equal([GAMMA, ALPHA, DELTA], simplestartify#mru#List())
 
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
