@@ -21,6 +21,13 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` now reports the recent-file count from each source
   and the resolved cache path, which is the answer to "why is this section
   empty".
+- Fixed `SimpleStartifyKey` never rendering. The documented `[key]` highlight
+  competed with a whole-line entry match anchored at column 1, which always
+  won Vim's earlier-start priority rule, so setting the group had no effect at
+  all. Dashboard highlighting now uses text properties, where the key marker
+  is a nested higher-priority span; builds without `+textprop` get the same
+  structure through a `contained` syntax match. This also replaces roughly
+  forty regex rules rebuilt on every draw.
 - Fixed a dashboard window resized while focus was elsewhere keeping its old,
   too-wide content. Reflow now walks the windows showing a dashboard instead
   of testing the current buffer, so a `nowrap` dashboard is no longer chopped

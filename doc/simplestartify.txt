@@ -427,6 +427,12 @@ parentheses.
 The links are re-established on |ColorScheme| with |:highlight-default|, so a
 colorscheme or vimrc may define any of them explicitly.
 
+Entries are highlighted with |textprop|s when the build has them, which is
+what makes SimpleStartifyKey visible: it is a nested span with a higher
+priority than the SimpleStartifyEntry span covering the rest of the line.
+Without +textprop the same structure is expressed with a |:syn-contained|
+match inside a whole-line match, which behaves the same way.
+
 ==============================================================================
 12. TESTING AND LIMITS                              *simplestartify-testing*
 

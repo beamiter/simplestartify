@@ -211,6 +211,10 @@ register a second `VimEnter` hook during migration.
 `SimpleStartifyEntry`, `SimpleStartifyKey`, `SimpleStartifyMuted`, and
 `SimpleStartifyFooter`.
 
+Entries are highlighted with text properties where the build supports them, so
+`SimpleStartifyKey` is a nested, higher-priority span drawn on top of
+`SimpleStartifyEntry` rather than competing with it.
+
 ## Tests
 
 ```sh
@@ -218,7 +222,7 @@ make check
 ```
 
 This compiles every Vim9 `def` and runs the smoke, width/layout, random-choice,
-recent-files, and session-safety regression tests.
+recent-files, highlighting, and session-safety regression tests.
 
 ## License
 

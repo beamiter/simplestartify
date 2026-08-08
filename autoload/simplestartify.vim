@@ -206,23 +206,95 @@ def ConfigureBuffer(origin: number)
   b:simplestartify_origin = origin
 enddef
 
-def HighlightLines(group: string, lines: list<number>)
-  for lnum in lines
-    if lnum >= 1 && lnum <= line('$')
-      execute $'syntax match {group} /\%{lnum}l.*/'
+const MUTED_TEXT = '(none yet)'
+
+const LINE_GROUPS = ['SimpleStartifyHeader', 'SimpleStartifyHeaderMinimal',
+  'SimpleStartifyHeaderBoxed', 'SimpleStartifyHeaderCentered',
+  'SimpleStartifyHeaderTerminal', 'SimpleStartifySection',
+  'SimpleStartifyEntry', 'SimpleStartifyFooter']
+
+# Text properties are exact and cannot mis-prioritize.  The syntax approach
+# below them could not express "this key marker, inside this whole-line match"
+# without a contained item, and it rebuilt roughly forty regex rules per draw.
+def EnsurePropTypes()
+  for group in LINE_GROUPS + ['SimpleStartifyKey', 'SimpleStartifyMuted']
+    if empty(prop_type_get(group))
+      # The key marker sits inside the entry span, so it needs to win.
+      prop_type_add(group, {
+        highlight: group,
+        priority: group ==# 'SimpleStartifyKey' ? 10 : 0,
+      })
     endif
   endfor
 enddef
 
-def ApplyHighlights(layout: dict<any>, style: string)
+def PropLines(group: string, lines: list<number>)
+  for lnum in lines
+    if lnum >= 1 && lnum <= line('$')
+      var length = strlen(getline(lnum))
+      if length > 0
+        prop_add(lnum, 1, {type: group, length: length})
+      endif
+    endif
+  endfor
+enddef
+
+def PropSpan(group: string, lnum: number, needle: string)
+  var offset = stridx(getline(lnum), needle)
+  if offset >= 0
+    prop_add(lnum, offset + 1, {type: group, length: strlen(needle)})
+  endif
+enddef
+
+def ApplyProps(layout: dict<any>, style: string)
+  EnsurePropTypes()
+  prop_clear(1, line('$'))
+  PropLines(get(STYLE_GROUPS, style, 'SimpleStartifyHeader'),
+    get(layout, 'header_lines', []))
+  PropLines('SimpleStartifySection', get(layout, 'section_lines', []))
+  PropLines('SimpleStartifyEntry', get(layout, 'entry_lines', []))
+  PropLines('SimpleStartifyFooter', get(layout, 'footer_lines', []))
+  # Fit() may have truncated the marker away on a very narrow window, so look
+  # for where it actually landed rather than assuming a column.
+  for [lnum, action] in items(get(layout, 'actions', {}))
+    var key = get(action, 'key', '')
+    if type(key) == v:t_string && !empty(key)
+      PropSpan('SimpleStartifyKey', str2nr(lnum), '[' .. key .. ']')
+    endif
+  endfor
+  for lnum in range(1, line('$'))
+    PropSpan('SimpleStartifyMuted', lnum, MUTED_TEXT)
+  endfor
+enddef
+
+def HighlightLines(group: string, lines: list<number>)
+  for lnum in lines
+    if lnum >= 1 && lnum <= line('$')
+      execute $'syntax match {group} /\%{lnum}l.*/ contains=SimpleStartifyKey'
+    endif
+  endfor
+enddef
+
+def ApplySyntax(layout: dict<any>, style: string)
   syntax clear
+  # "contained" is what the original was missing: an unrestricted whole-line
+  # match starts at column 1 and wins Vim's earlier-start priority, so the
+  # documented SimpleStartifyKey group could never render.
+  syntax match SimpleStartifyKey /\[[0-9A-Za-z]\]/ contained
+  execute $'syntax match SimpleStartifyMuted /{MUTED_TEXT}/'
   HighlightLines('SimpleStartifyEntry', get(layout, 'entry_lines', []))
-  syntax match SimpleStartifyKey /\[[0-9A-Za-z]\]/
-  syntax match SimpleStartifyMuted /(none yet)/
   HighlightLines(get(STYLE_GROUPS, style, 'SimpleStartifyHeader'),
     get(layout, 'header_lines', []))
   HighlightLines('SimpleStartifySection', get(layout, 'section_lines', []))
   HighlightLines('SimpleStartifyFooter', get(layout, 'footer_lines', []))
+enddef
+
+def ApplyHighlights(layout: dict<any>, style: string)
+  if has('textprop')
+    ApplyProps(layout, style)
+  else
+    ApplySyntax(layout, style)
+  endif
 enddef
 
 def InstallMappings(actions: dict<any>)
@@ -287,9 +359,9 @@ def Layout(style: string, selected_key: string = '')
   b:simplestartify_style = style
   b:simplestartify_width = width
   b:simplestartify_actions = get(layout, 'actions', {})
+  ApplyHighlights(layout, style)
   setlocal nomodifiable
   setlocal nomodified
-  ApplyHighlights(layout, style)
   InstallMappings(b:simplestartify_actions)
 
   var target = get(layout, 'cursor', 1)
