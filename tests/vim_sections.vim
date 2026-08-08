@@ -272,6 +272,45 @@ assert_equal(1, len(b:simplestartify_actions))
 assert_false(simplestartify#FilterKey("\<CR>"))
 assert_equal(ONE, expand('%:p'))
 
+
+# A custom header replaces each layout's built-in banner, and a custom footer
+# replaces the key hints.  Both accept a list of lines.
+g:simplestartify_custom_header = ['MY DASHBOARD', '']
+g:simplestartify_custom_footer = ['stay a while']
+SimpleStartify minimal
+var branded = join(getline(1, '$'), "\n")
+assert_match('MY DASHBOARD', branded)
+assert_notmatch('SIMPLESTARTIFY', branded)
+assert_match('stay a while', branded)
+assert_notmatch('? keys', branded)
+
+# A string that looks like a function call is an expression evaluated on every
+# draw; anything else is a literal line.  A Funcref cannot be used because Vim
+# refuses to store one in a lowercase global at all (E704).
+g:draw_count = 1
+def g:HeaderLines(): list<string>
+  return ['drawn ' .. g:draw_count]
+enddef
+g:simplestartify_custom_header = 'g:HeaderLines()'
+SimpleStartifyRefresh
+assert_match('drawn 1', join(getline(1, '$'), "\n"))
+g:draw_count = 2
+SimpleStartifyRefresh
+assert_match('drawn 2', join(getline(1, '$'), "\n"))
+
+g:simplestartify_custom_header = 'MY DASHBOARD'
+SimpleStartifyRefresh
+assert_match('MY DASHBOARD', join(getline(1, '$'), "\n"))
+
+# An expression that throws degrades to the built-in banner and says so, which
+# is the difference between a typo in a vimrc and an unusable Vim.
+g:simplestartify_custom_header = 'NoSuchFunction()'
+var complaint = execute('SimpleStartifyRefresh')
+assert_match('custom_header failed', complaint)
+assert_match('SIMPLESTARTIFY', join(getline(1, '$'), "\n"))
+g:simplestartify_custom_header = []
+g:simplestartify_custom_footer = []
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

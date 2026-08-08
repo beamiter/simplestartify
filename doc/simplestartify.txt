@@ -230,6 +230,34 @@ the normalized list is empty, all four defaults are restored.  At draw time,
 styles too wide for the current window (as reported by |winwidth()|) are left
 out; if that leaves no candidate, "minimal" is used.
 
+                                          *g:simplestartify_custom_header*
+                                          *g:simplestartify_custom_footer*
+Replace the banner each layout draws, and the key-hint footer.  Default [].
+Each accepts a list of lines, or a string.  A string that looks like a
+function call - an identifier, optionally with "#", "." or ":", followed by
+parentheses - is evaluated on every draw and may return a string or a list of
+strings; any other string is one literal line: >
+
+    let g:simplestartify_custom_header = ['MY VIM', '']
+    let g:simplestartify_custom_footer = 'happy hacking'
+    let g:simplestartify_custom_header = 'strftime("%A %d %B")'
+<
+A |Funcref| is deliberately not accepted: Vim refuses to store one in a global
+whose name does not begin with a capital (|E704|), so this option could never
+hold one.  The evaluated form is the equivalent.
+
+The lines are plain text and each layout renders them in its own style -
+centered under "centered", framed under "boxed", comment-prefixed under
+"terminal" - so a single configured header still looks like part of whichever
+layout was dealt.  Tabs and newlines inside a line are replaced by spaces, and
+the usual display-width fitting applies.  An expression that throws reports
+"[SimpleStartify] g:simplestartify_custom_header failed: ..." once per draw
+and the built-in banner is used instead.
+
+While |simplestartify-filter| is active the footer shows the query regardless
+of |g:simplestartify_custom_footer|: it is the reason half the dashboard has
+disappeared.
+
                                              *g:simplestartify_avoid_repeat*
 Avoid the current style on the next random draw when the pool has more than
 one member.  Default 1.

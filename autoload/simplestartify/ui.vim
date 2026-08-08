@@ -96,6 +96,20 @@ def Sections(model: dict<any>): list<dict<any>>
   return filter(copy(value), (_, section) => type(section) == v:t_dict)
 enddef
 
+# Header and footer are lists of plain text, and each layout renders them in
+# its own house style rather than taking them verbatim - that is what keeps a
+# user's banner recognisable whichever way the deck falls.
+def TextLines(model: dict<any>, field: string): list<string>
+  var value = get(model, field, [])
+  if type(value) == v:t_string
+    return empty(value) ? [] : [value]
+  endif
+  if type(value) != v:t_list
+    return []
+  endif
+  return filter(copy(value), (_, line) => type(line) == v:t_string)
+enddef
+
 def Name(section: dict<any>, field: string): string
   var value = get(section, field, get(section, 'title', ''))
   return type(value) == v:t_string ? value : ''
@@ -139,14 +153,20 @@ def BuildMinimal(model: dict<any>, width: number): dict<any>
   var entry_lines: list<number> = []
   var footer_lines: list<number> = []
 
-  add(header_lines, Add(lines, 'SIMPLESTARTIFY', width))
-  add(header_lines, Add(lines, 'a small, quick way into Vim', width))
+  var custom = TextLines(model, 'header')
+  for text in empty(custom)
+      ? ['SIMPLESTARTIFY', 'a small, quick way into Vim']
+      : custom
+    add(header_lines, Add(lines, text, width))
+  endfor
   Add(lines, '', width)
   for section in Sections(model)
     AddMinimalSection(lines, actions, section_lines, entry_lines,
       Name(section, 'title'), Entries(section), width)
   endfor
-  add(footer_lines, Add(lines, get(model, 'footer', ''), width))
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, text, width))
+  endfor
 
   return {
     lines: lines,
@@ -190,8 +210,11 @@ def BuildBoxed(model: dict<any>, width: number): dict<any>
   var inner = max([1, box_width - 4])
   var edge = '+' .. repeat('-', inner + 2) .. '+'
 
+  var custom = TextLines(model, 'header')
   add(header_lines, Add(lines, edge, width))
-  add(header_lines, Add(lines, BoxRow('SIMPLESTARTIFY // RANDOM DECK', inner), width))
+  for text in empty(custom) ? ['SIMPLESTARTIFY // RANDOM DECK'] : custom
+    add(header_lines, Add(lines, BoxRow(text, inner), width))
+  endfor
   add(header_lines, Add(lines, edge, width))
   var first = true
   for section in Sections(model)
@@ -203,7 +226,9 @@ def BuildBoxed(model: dict<any>, width: number): dict<any>
       Name(section, 'short'), Entries(section), inner, width)
   endfor
   add(footer_lines, Add(lines, edge, width))
-  add(footer_lines, Add(lines, BoxRow(get(model, 'footer', ''), inner), width))
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, BoxRow(text, inner), width))
+  endfor
   add(footer_lines, Add(lines, edge, width))
 
   return {
@@ -245,12 +270,15 @@ def BuildCentered(model: dict<any>, width: number): dict<any>
   var entry_lines: list<number> = []
   var footer_lines: list<number> = []
 
-  for text in [' ____  _                 _',
-      '/ ___|(_)_ __ ___  _ __ | | ___',
-      '\___ \| | ''_ ` _ \| ''_ \| |/ _ \',
-      ' ___) | | | | | | | |_) | |  __/',
-      '|____/|_|_| |_| |_| .__/|_|\___|',
-      '                  |_|  STARTIFY']
+  var custom = TextLines(model, 'header')
+  for text in empty(custom)
+      ? [' ____  _                 _',
+         '/ ___|(_)_ __ ___  _ __ | | ___',
+         '\___ \| | ''_ ` _ \| ''_ \| |/ _ \',
+         ' ___) | | | | | | | |_) | |  __/',
+         '|____/|_|_| |_| |_| .__/|_|\___|',
+         '                  |_|  STARTIFY']
+      : custom
     add(header_lines, Add(lines, Center(text, width), width))
   endfor
   Add(lines, '', width)
@@ -258,7 +286,9 @@ def BuildCentered(model: dict<any>, width: number): dict<any>
     AddCenteredSection(lines, actions, section_lines, entry_lines,
       toupper(Name(section, 'short')), Entries(section), width)
   endfor
-  add(footer_lines, Add(lines, Center(get(model, 'footer', ''), width), width))
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, Center(text, width), width))
+  endfor
 
   return {
     lines: lines,
@@ -299,14 +329,23 @@ def BuildTerminal(model: dict<any>, width: number): dict<any>
   var entry_lines: list<number> = []
   var footer_lines: list<number> = []
 
-  add(header_lines, Add(lines, '$ simplestartify --style=random', width))
-  add(header_lines, Add(lines, 'boot: ready // cwd: ' .. get(model, 'cwd', ''), width))
+  var custom = TextLines(model, 'header')
+  if empty(custom)
+    add(header_lines, Add(lines, '$ simplestartify --style=random', width))
+    add(header_lines, Add(lines, 'boot: ready // cwd: ' .. get(model, 'cwd', ''), width))
+  else
+    for text in custom
+      add(header_lines, Add(lines, '# ' .. text, width))
+    endfor
+  endif
   Add(lines, '', width)
   for section in Sections(model)
     AddTerminalSection(lines, actions, section_lines, entry_lines,
       Name(section, 'command'), Entries(section), width)
   endfor
-  add(footer_lines, Add(lines, '# ' .. get(model, 'footer', ''), width))
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, '# ' .. text, width))
+  endfor
 
   return {
     lines: lines,

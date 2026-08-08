@@ -321,6 +321,38 @@ def SectionNames(spec: dict<any>, kind: string, entries: list<dict<any>>): dict<
   return names
 enddef
 
+# A dynamic header cannot be a Funcref: Vim refuses to store one in a global
+# whose name does not start with a capital (E704), so an option named
+# g:simplestartify_custom_header can never hold one.  A string that looks like
+# a function call is therefore evaluated per draw, and any other string is a
+# literal line - "MY DASHBOARD" is not a call and cannot be mistaken for one.
+const CALL_EXPRESSION = '^\%(\a\|_\)[[:alnum:]_#.:]*(.*)$'
+
+def CustomLines(name: string): list<string>
+  var value: any = get(g:, name, [])
+  if type(value) == v:t_string
+    if value !~# CALL_EXPRESSION
+      return [CleanLabel(value)]
+    endif
+    try
+      value = eval(value)
+    catch
+      # A broken user expression degrades to the layout's built-in banner
+      # rather than taking the dashboard down with it.
+      Notify($'g:{name} failed: {v:exception}', true)
+      return []
+    endtry
+    if type(value) == v:t_string
+      return [CleanLabel(value)]
+    endif
+  endif
+  if type(value) != v:t_list
+    return []
+  endif
+  return mapnew(filter(copy(value), (_, line) => type(line) == v:t_string),
+    (_, line) => CleanLabel(line))
+enddef
+
 def Model(): dict<any>
   var digits = copy(RECENT_KEYS)
   var letters = copy(SESSION_KEYS)
@@ -358,10 +390,13 @@ def Model(): dict<any>
         SectionLimit(spec, recent_limit), used, digits)
     elseif kind ==# 'sessions'
       entries = SessionEntries(SectionLimit(spec, session_limit), letters)
+    # Everything configured is shown by default: a pinned entry that silently
+    # vanished once the list outgrew the shortcut alphabet would be worse than
+    # one drawn without a marker, which is now a state entries can be in.
     elseif kind ==# 'bookmarks'
-      entries = BookmarkEntries(SectionLimit(spec, len(SESSION_KEYS)), letters)
+      entries = BookmarkEntries(SectionLimit(spec, CANDIDATE_SCAN), letters)
     elseif kind ==# 'commands'
-      entries = CommandEntries(SectionLimit(spec, len(SESSION_KEYS)), letters)
+      entries = CommandEntries(SectionLimit(spec, CANDIDATE_SCAN), letters)
     elseif kind ==# 'special'
       var limit = SectionLimit(spec, len(SPECIAL_ENTRIES))
       entries = limit <= 0 ? [] : deepcopy(SPECIAL_ENTRIES)[0 : limit - 1]
@@ -375,6 +410,7 @@ def Model(): dict<any>
 
   return {
     cwd: CleanLabel(fnamemodify(getcwd(), ':~')),
+    header: CustomLines('simplestartify_custom_header'),
     sections: sections,
   }
 enddef
@@ -603,6 +639,17 @@ enddef
 # Re-render from the cached model.  Everything expensive - stat'ing every
 # recent file, globbing and mtime-sorting the session directory - lives in
 # Model(); a resize changes none of it, so a resize must not pay for it.
+# The filter prompt always wins the footer: while a query is active it is the
+# only thing down there worth the columns, and a custom footer would otherwise
+# hide the reason half the dashboard disappeared.
+def FooterLines(query: string, width: number): list<string>
+  if !empty(query)
+    return [FilterFooter(query, width)]
+  endif
+  var custom = CustomLines('simplestartify_custom_footer')
+  return empty(custom) ? [Footer(width)] : custom
+enddef
+
 def Matches(entry: dict<any>, needle: string): bool
   # Substring, over everything the entry is addressed by: what a user types is
   # a piece of the name they can see, or a piece of the path behind it.
@@ -641,8 +688,7 @@ def Layout(style: string, selected_key: string = '')
   # The footer is the one part of the model that depends on the width, so it
   # is resolved here rather than baked into the cache.
   var layout = simplestartify#ui#Build(
-    extend(Filtered(model, query),
-      {footer: empty(query) ? Footer(width) : FilterFooter(query, width)}),
+    extend(Filtered(model, query), {footer: FooterLines(query, width)}),
     style, width)
   setlocal modifiable
   silent! execute 'keepjumps %delete _'

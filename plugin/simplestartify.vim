@@ -213,6 +213,20 @@ def Patterns(value: any): list<string>
   return out
 enddef
 
+# A header is a list of lines, or a string: either a literal line or, when it
+# looks like a function call, an expression the renderer evaluates per draw.
+# The string form is kept as a string here for exactly that reason.
+def Lines(value: any): any
+  if type(value) == v:t_string
+    return value
+  endif
+  if type(value) == v:t_list
+    # Empty strings stay: a blank line is legitimate spacing in a banner.
+    return filter(copy(value), (_, item) => type(item) == v:t_string)
+  endif
+  return []
+enddef
+
 def StyleList(value: any): list<string>
   if type(value) != v:t_list
     return ['minimal', 'boxed', 'centered', 'terminal']
@@ -236,6 +250,8 @@ g:simplestartify_style = Text(Legacy('style', 'random'), 'random')
 g:simplestartify_styles = StyleList(Legacy(
   'styles', ['minimal', 'boxed', 'centered', 'terminal']))
 g:simplestartify_avoid_repeat = Flag(Legacy('avoid_repeat', 1), 1)
+g:simplestartify_custom_header = Lines(Legacy('custom_header', []))
+g:simplestartify_custom_footer = Lines(Legacy('custom_footer', []))
 g:simplestartify_lists = Lists(Legacy('lists', DEFAULT_LISTS))
 g:simplestartify_bookmarks = Bookmarks(Legacy('bookmarks', []))
 g:simplestartify_commands = Commands(Legacy('commands', []))

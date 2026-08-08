@@ -37,6 +37,13 @@ All notable changes to SimpleStartify are documented here.
   the rename so a session carrying extra state is still replaced atomically.
   A variable holding something `string()` cannot render as sourceable text is
   skipped instead of producing a session that fails to load.
+- Added `g:simplestartify_custom_header` and `g:simplestartify_custom_footer`,
+  each a list of lines or a string. A string that looks like a function call
+  is evaluated on every draw, which is how a dynamic header works: Vim refuses
+  to store a Funcref in a lowercase global (`E704`), so that shape could never
+  have been supported. Each layout still renders the lines in its own style,
+  and an expression that throws falls back to the built-in banner instead of
+  breaking the dashboard.
 - Added incremental filtering: `/` and `<C-f>` narrow the dashboard as you
   type, matching the label and the path, session name or command behind it.
   Each keystroke re-draws from the cached model, so no file is stat'ed and no

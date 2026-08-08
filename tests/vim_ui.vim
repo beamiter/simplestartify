@@ -37,7 +37,7 @@ var model = {
       {key: 'q', kind: 'quit', label: 'quit'},
     ]},
   ],
-  footer: '<Enter> open',
+  footer: ['<Enter> open'],
 }
 
 for style in simplestartify#ui#Styles()
@@ -74,11 +74,41 @@ var keyless = filter(copy(aligned.lines), (_, text) => stridx(text, '配置目�
 assert_equal(1, len(keyless))
 assert_match('^ \+配置目录$', keyless[0])
 
-# An empty section list renders nothing selectable rather than throwing.
+# An empty section list renders nothing selectable rather than throwing, and a
+# footer given as a bare string still renders.
 var bare = simplestartify#ui#Build({cwd: '/tmp', sections: [], footer: 'x'},
   'boxed', 40)
 assert_equal({}, bare.actions)
 assert_equal(1, bare.cursor)
+assert_match('x', join(bare.lines, "\n"))
+
+# A custom header replaces each layout's built-in banner, in that layout's own
+# house style, and a multi-line footer keeps the same width guarantees.
+var branded = extend(copy(model), {
+  header: ['MY VIM', '很长的中文标题-and-ascii'],
+  footer: ['line one', 'line two'],
+})
+for style in simplestartify#ui#Styles()
+  for width in [20, 28, 40, 80, 120]
+    var layout = simplestartify#ui#Build(branded, style, width)
+    var rendered = join(layout.lines, "\n")
+    assert_equal(9, len(layout.actions), style)
+    assert_equal(2, len(layout.footer_lines)
+      + (style ==# 'boxed' ? -2 : 0), $'{style}/{width}')
+    for line_text in layout.lines
+      assert_true(strdisplaywidth(line_text) <= width,
+        $'{style}/{width}: {string(line_text)}')
+      assert_notmatch('\s\+$', line_text, style)
+    endfor
+    if width >= 80
+      assert_match('MY VIM', rendered, style)
+      assert_match('line two', rendered, style)
+      # The built-in banner is gone, not merely pushed down.
+      assert_notmatch('SIMPLESTARTIFY', rendered, style)
+      assert_notmatch('STARTIFY', rendered, style)
+    endif
+  endfor
+endfor
 
 var candidates = ['minimal', 'boxed', 'terminal']
 assert_equal('boxed', simplestartify#ui#PickStyle(candidates, 'minimal', 0))

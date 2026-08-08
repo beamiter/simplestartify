@@ -52,6 +52,8 @@ let g:simplestartify_hide_intro = 1  " defaults to g:simplestartify_auto_open
 let g:simplestartify_style = 'random'
 let g:simplestartify_styles = ['minimal', 'boxed', 'centered', 'terminal']
 let g:simplestartify_avoid_repeat = 1
+let g:simplestartify_custom_header = []   " list of lines, or a string
+let g:simplestartify_custom_footer = []
 
 let g:simplestartify_lists = [
   \ {'type': 'files'}, {'type': 'sessions'}, {'type': 'bookmarks'},
@@ -85,6 +87,24 @@ let g:simplestartify_mru_file = '~/.vim/simplestartify-mru'
 Unknown and duplicate candidates are removed; an empty result restores all
 four defaults. With more than one eligible style,
 `g:simplestartify_avoid_repeat` removes the current style before the next draw.
+
+`g:simplestartify_custom_header` and `g:simplestartify_custom_footer` replace
+each layout's banner and its key hints. Both accept a list of lines or a
+string; a string that looks like a function call is evaluated on every draw
+and may return a string or a list, so a dynamic header works:
+
+```vim
+let g:simplestartify_custom_header = ['MY VIM', '']
+let g:simplestartify_custom_footer = 'happy hacking'
+let g:simplestartify_custom_header = 'strftime("%A %d %B")'
+```
+
+A Funcref is deliberately not accepted: Vim refuses to store one in a global
+whose name does not start with a capital (`E704`), so this option could never
+hold one -- the evaluated string is the equivalent. The lines are plain text
+and each layout renders them in its own style, so one configured header still
+looks like part of whichever layout was dealt. An expression that throws
+reports the failure and falls back to the built-in banner.
 
 `g:simplestartify_session_persistence` controls automatic rewrites only: when
 enabled, the active managed session is saved at `VimLeavePre` and before
