@@ -752,12 +752,41 @@ export def CompleteStyle(lead: string, _line: string, _position: number): list<s
   return filter(styles, (_, style) => stridx(style, lead) == 0)
 enddef
 
-export def Open(requested: string = '')
-  if &modified && !&hidden && !IsDashboard()
+# Command modifiers that say *where* a window goes.  <mods> also carries
+# things the dashboard must not inherit - `noautocmd` would suppress the
+# FileType event its highlighting rides on, `silent` would swallow the
+# messages Open() uses to explain a refusal - so the placement words are kept
+# and everything else is dropped rather than passed through blind.
+const PLACEMENT_MODS = ['aboveleft', 'belowright', 'botright', 'horizontal',
+  'leftabove', 'rightbelow', 'tab', 'topleft', 'vertical']
+
+def Placement(mods: string): string
+  return join(filter(split(mods, '\s\+'),
+    (_, word) => index(PLACEMENT_MODS, word) >= 0))
+enddef
+
+export def Open(requested: string = '', mods: string = '')
+  # A placement modifier asks for a *new* window, so the current buffer is not
+  # about to be abandoned and there is nothing to refuse - and an explicit
+  # `:vertical SimpleStartify` from inside the dashboard means a second one,
+  # not a redraw of the first.
+  var placement = Placement(mods)
+  if empty(placement) && &modified && !&hidden && !IsDashboard()
     Notify('save the current buffer before opening the dashboard', true)
     return
   endif
-  if !IsDashboard()
+  if !empty(placement)
+    var origin = bufnr()
+    try
+      execute placement .. ' new'
+    catch
+      # E36: no room left to split.  Say so instead of leaving the user with a
+      # command that appeared to do nothing.
+      Notify('cannot open a window there: ' .. v:exception, true)
+      return
+    endtry
+    ConfigureBuffer(origin)
+  elseif !IsDashboard()
     var origin = bufnr()
     silent keepalt enew
     ConfigureBuffer(origin)
@@ -780,19 +809,51 @@ export def Start()
   AutoOpen()
 enddef
 
+# "This window holds nothing the user would miss."  Shared by the startup path
+# and the reopen-on-empty path so the two can never drift apart on what counts
+# as a window worth drawing over.
+def Vacant(): bool
+  return !&insertmode
+        \ && &modifiable
+        \ && !&modified
+        \ && &buftype ==# ''
+        \ && empty(bufname())
+        \ && line('$') == 1
+        \ && getline(1) ==# ''
+enddef
+
 export def AutoOpen()
-  if !Flag('simplestartify_auto_open', 1)
-        \ || argc() != 0
-        \ || &insertmode
-        \ || !&modifiable
-        \ || &modified
-        \ || &buftype !=# ''
-        \ || !empty(bufname())
-        \ || line('$') != 1
-        \ || getline(1) !=# ''
+  if !Flag('simplestartify_auto_open', 1) || argc() != 0 || !Vacant()
     return
   endif
   Open()
+enddef
+
+# Closing your last file drops you on a blank [No Name] buffer, which is the
+# one place the dashboard is unambiguously more useful than what Vim leaves
+# behind.  Opt-in, because it is a real change in what :bd does.
+export def ReopenIfEmpty()
+  if !Flag('simplestartify_reopen_on_empty', 0) || IsDashboard() || !Vacant()
+    return
+  endif
+  # A listed buffer with a name is a file the user still has open somewhere,
+  # even if it is not on screen; only the truly empty Vim gets the dashboard.
+  for info in getbufinfo({buflisted: 1})
+    if !empty(info.name)
+      return
+    endif
+  endfor
+  Open()
+enddef
+
+# BufDelete fires while the buffer is still being taken apart, and opening a
+# buffer from inside that is how plugins corrupt window state.  Hand the work
+# to the main loop instead; a Vim without +timers simply does not get this.
+export def ScheduleReopen()
+  if !Flag('simplestartify_reopen_on_empty', 0) || !exists('*timer_start')
+    return
+  endif
+  timer_start(0, (_) => ReopenIfEmpty())
 enddef
 
 export def Refresh()
@@ -994,6 +1055,40 @@ def RunCommand(command: string)
   endtry
 enddef
 
+# Leaving Vim with unsaved work is E37, a raw error thrown out of a mapping on
+# a screen whose whole job is to be friendly.  Name the buffers instead.
+def QuitVim(all: bool)
+  var modified = simplestartify#session#ModifiedBuffers()
+  if !empty(modified)
+    Notify(printf('modified buffers would be lost; save them or use :%s!: %s',
+      all ? 'qall' : 'quit', join(modified, ', ')), true)
+    return
+  endif
+  execute all ? 'qall' : 'quit'
+enddef
+
+def Quit()
+  var action = get(g:, 'simplestartify_quit_action', 'auto')
+  if type(action) != v:t_string
+    action = 'auto'
+  endif
+  # A dashboard in a split is a window the user opened next to their work, so
+  # "quit" there means that window - closing the whole editor because the
+  # start screen happened to be focused is not what the entry offers.
+  var split = winnr('$') > 1 || tabpagenr('$') > 1
+  if action ==# 'qall'
+    QuitVim(true)
+  elseif action ==# 'close' || (action ==# 'auto' && split)
+    if split
+      close
+    else
+      QuitVim(false)
+    endif
+  else
+    QuitVim(false)
+  endif
+enddef
+
 def Run(action: dict<any>, verb: string)
   var kind = get(action, 'kind', '')
   if kind ==# 'file'
@@ -1009,7 +1104,7 @@ def Run(action: dict<any>, verb: string)
   elseif kind ==# 'restyle'
     NextStyle()
   elseif kind ==# 'quit'
-    quit
+    Quit()
   endif
 enddef
 

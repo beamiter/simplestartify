@@ -208,7 +208,9 @@ def LeaveDashboard()
   endif
 enddef
 
-def ModifiedBuffers(): list<string>
+# Exported because the dashboard's quit action needs the same answer: giving
+# up a Vim with unsaved work has to name the buffers, not raise E37.
+export def ModifiedBuffers(): list<string>
   var names: list<string> = []
   for info in getbufinfo({buflisted: 1})
     if getbufvar(info.bufnr, '&modified')

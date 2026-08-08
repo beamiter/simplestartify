@@ -4,6 +4,21 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- `:SimpleStartify` and `:Startify` now honour window-placement command
+  modifiers, so `:vertical SimpleStartify`, `:botright SimpleStartify` and
+  `:tab SimpleStartify` open the dashboard in their own window instead of
+  every invocation taking over the current one. Modifiers that are not about
+  placement are dropped rather than passed to `:new`, because `noautocmd`
+  would suppress the `FileType` event the dashboard is set up by.
+- The `quit` entry no longer runs a bare `:quit`. A dashboard sharing the
+  screen closes its own window, and one that is alone leaves Vim -- but never
+  with unsaved work: modified listed buffers are named instead of raising
+  `E37` out of the mapping. `g:simplestartify_quit_action` pins it to `quit`,
+  `close` or `qall` for anyone who wants one fixed meaning.
+- Added `g:simplestartify_reopen_on_empty`: deleting the last named buffer
+  brings the dashboard back instead of leaving Vim on an empty `[No Name]`.
+  The check is deferred through a zero-delay timer, because `BufDelete` fires
+  while the buffer is still being taken apart.
 - The dashboard is now built from configurable sections. `g:simplestartify_lists`
   chooses which of `files`, `dir`, `project`, `sessions`, `bookmarks`,
   `commands` and `special` are drawn and in what order, with an optional

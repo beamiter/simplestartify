@@ -292,6 +292,12 @@ g:simplestartify_change_to_vcs_root = Flag(
 g:simplestartify_change_to_dir = Flag(Legacy('change_to_dir', 0), 0)
 g:simplestartify_open_action = Enum(Legacy('open_action', 'edit'),
   ['edit', 'split', 'vsplit', 'tabedit'], 'edit')
+# "auto" reads the quit entry as "close this dashboard" when it is one window
+# among several and as "leave Vim" when it is the only one.  The other values
+# pin it to a single meaning for people who always want the same thing.
+g:simplestartify_quit_action = Enum(Legacy('quit_action', 'auto'),
+  ['auto', 'quit', 'close', 'qall'], 'auto')
+g:simplestartify_reopen_on_empty = Flag(Legacy('reopen_on_empty', 0), 0)
 
 def DefaultMruFile(): string
   # XDG when the user has opted into it, otherwise beside the session
@@ -320,8 +326,11 @@ if g:simplestartify_hide_intro
   set shortmess+=I
 endif
 
+# <mods> so `:vertical SimpleStartify`, `:tab SimpleStartify` and
+# `:botright SimpleStartify` put the dashboard where they say, instead of
+# every invocation taking over the current window.
 command! -nargs=? -bar -complete=customlist,simplestartify#CompleteStyle
-      \ SimpleStartify call simplestartify#Open(<q-args>)
+      \ SimpleStartify call simplestartify#Open(<q-args>, '<mods>')
 command! -nargs=0 -bar SimpleStartifyRefresh call simplestartify#Refresh()
 command! -nargs=0 -bar SimpleStartifyNextStyle call simplestartify#NextStyle()
 command! -nargs=0 -bar SimpleStartifyHealth call simplestartify#HealthReport()
@@ -330,7 +339,7 @@ command! -nargs=? -bar -complete=file
       \ SimpleStartifyForget call simplestartify#ForgetRecent(<q-args>)
 
 # vim-startify compatible command surface.
-command! -nargs=0 -bar Startify call simplestartify#Open()
+command! -nargs=0 -bar Startify call simplestartify#Open('', '<mods>')
 command! -nargs=? -bar -bang -complete=customlist,simplestartify#session#Complete
       \ SSave call simplestartify#session#Save(<bang>0, <q-args>)
 command! -nargs=? -bar -bang -complete=customlist,simplestartify#session#Complete
@@ -354,6 +363,9 @@ augroup SimpleStartify
   # otherwise, and it refuses to run while a session is already active.
   autocmd DirChanged * call simplestartify#session#Autoload()
   autocmd BufWinEnter,BufWritePost * call simplestartify#mru#Touch()
+  # Only with g:simplestartify_reopen_on_empty; the handler returns before it
+  # allocates a timer otherwise.
+  autocmd BufDelete,BufWipeout * call simplestartify#ScheduleReopen()
   # Registered before the session hook so a failing recent-files write can
   # never cost the user their session; mru#Save() swallows its own errors.
   autocmd VimLeavePre * call simplestartify#mru#Save()

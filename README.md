@@ -75,6 +75,8 @@ let g:simplestartify_session_savecmds = []
 let g:simplestartify_change_to_vcs_root = 0
 let g:simplestartify_change_to_dir = 0
 let g:simplestartify_open_action = 'edit'  " or split / vsplit / tabedit
+let g:simplestartify_quit_action = 'auto'  " or quit / close / qall
+let g:simplestartify_reopen_on_empty = 0
 
 let g:simplestartify_mru_persist = 1
 let g:simplestartify_mru_max = 200    " clamped to 0..5000
@@ -194,7 +196,7 @@ are enabled, the Git root wins when found.
 | letter shown beside an entry | load that session, open that bookmark, or run that command |
 | `n` | open a new empty buffer |
 | `r` | deal another random style |
-| `q` | quit Vim |
+| `q` | close the dashboard window, or quit Vim when it is the only one (`g:simplestartify_quit_action`) |
 | `<CR>` / double-click | run the selected entry (see `g:simplestartify_open_action`) |
 | `s` / `<C-x>`, `v` / `<C-v>`, `t` / `<C-t>` | run it in a split, vertical split or new tab |
 | `/` / `<C-f>` | filter the entries as you type |
@@ -208,6 +210,16 @@ Opening an entry in a split or a tab leaves the dashboard in its own window,
 so you can open several files in a row; `<CR>` replaces it. Sessions ignore
 the split verbs because loading one replaces the whole layout, and `s`, `t`
 and `v` are never used as session shortcuts.
+
+The dashboard itself takes a window-placement modifier, so
+`:vertical SimpleStartify`, `:botright SimpleStartify centered` and
+`:tab SimpleStartify` put it beside your work instead of over it. Modifiers
+that are not about placement are ignored rather than passed on: `noautocmd`
+would suppress the `FileType` event the dashboard is set up by. `q` in such a
+window closes that window; only a dashboard that is alone quits Vim, and it
+refuses -- naming the buffers -- while anything listed is modified.
+`g:simplestartify_reopen_on_empty` brings the dashboard back when the last
+named buffer is deleted, instead of leaving you on an empty `[No Name]`.
 
 `/` and `<C-f>` narrow the dashboard as you type, matching case-insensitively
 against each entry's label and the path, session name or command behind it.
@@ -233,6 +245,7 @@ skipped. Sessions are ordered newest first.
 | Command | Effect |
 | --- | --- |
 | `:SimpleStartify [style]` | open the dashboard; an explicit style overrides the configured draw |
+| `:vertical` / `:tab` / `:botright SimpleStartify` | open it in its own window or tab instead of taking over the current one |
 | `:SimpleStartifyRefresh` | rebuild the current style without rerolling it |
 | `:SimpleStartifyNextStyle` | make a new eligible random draw while on the dashboard |
 | `:SimpleStartifyHealth` | open a report of environment, styles, recent-file sources and session state, one `[OK]`/`[WARN]`/`[ERROR]` line per fact |

@@ -82,7 +82,8 @@ selected.
                         command, as shown beside the entry
     n                   open a new empty buffer
     r                   draw another random UI style
-    q                   quit Vim
+    q                   close the dashboard window, or quit Vim when it is
+                        the only one; see |g:simplestartify_quit_action|
 
     <CR>                run the selected action
     double left click   select and run an action
@@ -397,6 +398,31 @@ After opening a recent file, use |:lcd| to change to its directory.  Default
 0.  When both directory options are enabled, a found Git root wins; otherwise
 this option supplies the fallback.
 
+                                              *g:simplestartify_quit_action*
+What the "quit" entry does: "auto" (default), "quit", "close" or "qall".
+
+    auto    Close the window when the dashboard is one window among several,
+            or one tab among several; otherwise leave Vim.
+    quit    Always |:quit|.
+    close   |:close| the window; with only one window and one tab there is
+            nothing to close, so this leaves Vim.
+    qall    Always |:qall|.
+
+Leaving Vim is refused, naming the buffers, while a listed buffer is
+modified: the entry never discards unsaved work and never raises |E37| from
+inside the mapping.  An unknown value uses "auto".
+
+                                          *g:simplestartify_reopen_on_empty*
+Reopen the dashboard when the last named buffer is deleted, instead of
+leaving Vim on an empty "[No Name]" buffer.  Default 0.
+
+The check runs from a zero-delay |timer_start()| after |BufDelete| and
+|BufWipeout|, because those events fire while the buffer is still being taken
+apart.  It draws only when no listed buffer has a name and the current window
+is unmodified, unnamed, modifiable, of empty 'buftype' and holds one empty
+line - the same window conditions as |g:simplestartify_auto_open|.  Nothing
+happens without |+timers|.
+
                                               *g:simplestartify_mru_persist*
 Write the in-session recent-file record to |g:simplestartify_mru_file| at
 |VimLeavePre| and read it back on first use.  Default 1.  With 0 the record is
@@ -425,6 +451,21 @@ string disables persistence in the same way as
         Open the dashboard.  [style] may be "random" or one of the four names
         in |simplestartify-styles|.  With no argument, use the configured
         style.  A modified buffer is not replaced while 'hidden' is off.
+
+        A window-placement |:command-modifiers| prefix opens the dashboard in
+        its own window instead of taking over the current one: >
+
+            :vertical SimpleStartify
+            :botright SimpleStartify centered
+            :tab SimpleStartify
+<
+        "aboveleft", "belowright", "botright", "horizontal", "leftabove",
+        "rightbelow", "tab", "topleft" and "vertical" are honoured; any other
+        modifier is ignored rather than passed on, because "noautocmd" would
+        suppress the |FileType| event the dashboard is set up by.  With a
+        placement modifier the current buffer is not replaced, so the
+        modified-buffer refusal above does not apply, and asking for one from
+        inside a dashboard opens a second one.
 
                                                  *:SimpleStartifyRefresh*
 :SimpleStartifyRefresh
