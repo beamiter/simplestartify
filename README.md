@@ -62,7 +62,7 @@ let g:simplestartify_skiplist = [
   \ '\.git[\\/]\%(COMMIT_EDITMSG\|MERGE_MSG\|TAG_EDITMSG\|SQUASH_MSG\)$',
   \ '\.git[\\/]rebase-\%(merge\|apply\)[\\/]']
 
-let g:simplestartify_recent_count = 7   " clamped to 0..9
+let g:simplestartify_recent_count = 7   " clamped to 0..50
 let g:simplestartify_session_count = 4  " clamped to 0..13
 let g:simplestartify_session_dir = '~/.vim/session'
 let g:simplestartify_session_persistence = 0
@@ -177,6 +177,7 @@ are enabled, the Git root wins when found.
 | `q` | quit Vim |
 | `<CR>` / double-click | run the selected entry (see `g:simplestartify_open_action`) |
 | `s` / `<C-x>`, `v` / `<C-v>`, `t` / `<C-t>` | run it in a split, vertical split or new tab |
+| `/` / `<C-f>` | filter the entries as you type |
 | `j` / `k`, `<Tab>` / `<S-Tab>` | move between actionable entries |
 | `R` | refresh recent files and sessions, preserving the style and selection |
 | `d` | confirm and delete the selected session |
@@ -187,6 +188,15 @@ Opening an entry in a split or a tab leaves the dashboard in its own window,
 so you can open several files in a row; `<CR>` replaces it. Sessions ignore
 the split verbs because loading one replaces the whole layout, and `s`, `t`
 and `v` are never used as session shortcuts.
+
+`/` and `<C-f>` narrow the dashboard as you type, matching case-insensitively
+against each entry's label and the path, session name or command behind it.
+Each keystroke re-draws from the model already in memory -- no file is stat'ed
+-- and a section with no match disappears while the filter is active. `<BS>`
+erases, `<CR>` opens the selection, `<Esc>` clears. This is what makes a list
+longer than the nine digit shortcuts usable: entries past the end of a
+shortcut alphabet are drawn without a `[key]` marker and are reached with
+`j`/`k` or by typing.
 
 Recent files come from the files this session opened, then from `v:oldfiles`.
 Vim fills `v:oldfiles` once from `viminfo` during startup and never updates it

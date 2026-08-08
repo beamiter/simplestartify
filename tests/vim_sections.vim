@@ -213,6 +213,65 @@ g:simplestartify_lists = [{type: 'nonsense'}]
 SimpleStartifyRefresh
 assert_equal(['files', 'sessions', 'special'], Ids())
 
+# Filtering narrows the cached model in place.  It is driven one keystroke at
+# a time so this can be tested without a blocking read; the interactive loop
+# is the same state machine with getcharstr() in front of it.
+g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+g:simplestartify_recent_count = 9
+execute 'lcd ' .. fnameescape(TEMP)
+SimpleStartify minimal
+var everything = len(b:simplestartify_actions)
+assert_true(everything >= 6)
+for char in split('two', '\zs')
+  assert_true(simplestartify#FilterKey(char))
+endfor
+assert_equal('two', b:simplestartify_query)
+# The cached model is left whole - that is what makes backspacing free - and
+# only what is drawn narrows.
+assert_equal(['files', 'sessions', 'special'], Ids())
+assert_equal(1, len(b:simplestartify_actions))
+assert_equal([TWO], mapnew(values(b:simplestartify_actions),
+  (_, action) => get(action, 'path', '')))
+var screen = join(getline(1, '$'), "\n")
+assert_notmatch('SESSIONS', screen)
+# The query is visible in the buffer, not only on the command line, which is
+# gone the moment anything else echoes.
+assert_match('filter: two', screen)
+
+# Backspace narrows back out, and matching covers the path behind the label as
+# well as sessions and actions.
+assert_true(simplestartify#FilterKey("\<BS>"))
+assert_equal('tw', b:simplestartify_query)
+assert_true(simplestartify#FilterKey("\<BS>"))
+assert_true(simplestartify#FilterKey("\<BS>"))
+assert_equal('', b:simplestartify_query)
+assert_equal(everything, len(b:simplestartify_actions))
+for char in split('alph', '\zs')
+  assert_true(simplestartify#FilterKey(char))
+endfor
+assert_equal(['alpha'], mapnew(values(b:simplestartify_actions),
+  (_, action) => get(action, 'name', '')))
+assert_notmatch('RECENT FILES', join(getline(1, '$'), "\n"))
+
+# An unhandled key keeps what has been typed instead of throwing it away.
+assert_true(simplestartify#FilterKey("\<Left>"))
+assert_equal('alph', b:simplestartify_query)
+
+# Escape clears the filter and ends the mode; the full dashboard comes back.
+assert_false(simplestartify#FilterKey("\<Esc>"))
+assert_equal('', b:simplestartify_query)
+assert_equal(everything, len(b:simplestartify_actions))
+assert_notmatch('filter:', join(getline(1, '$'), "\n"))
+
+# <CR> opens the single remaining match, which is the point of the exercise:
+# an entry past the nine digit shortcuts is one typed word away.
+for char in split('one', '\zs')
+  assert_true(simplestartify#FilterKey(char))
+endfor
+assert_equal(1, len(b:simplestartify_actions))
+assert_false(simplestartify#FilterKey("\<CR>"))
+assert_equal(ONE, expand('%:p'))
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

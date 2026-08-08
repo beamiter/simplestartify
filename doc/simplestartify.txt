@@ -89,6 +89,7 @@ selected.
     s, CTRL-X           run the selected action in a horizontal split
     v, CTRL-V           run the selected action in a vertical split
     t, CTRL-T           run the selected action in a new tab
+    /, CTRL-F           filter the entries as you type
     j, k                next / previous action
     <Tab>, <S-Tab>      next / previous action
     R                   refresh data, keeping style and selection
@@ -101,6 +102,27 @@ tab, so several files can be opened one after another; |<CR>| replaces it.  A
 session ignores the split verbs because loading one replaces the whole
 layout.  "s", "t" and "v" are never handed out as session shortcuts, so a
 session can never silently take one of them over.
+
+FILTERING                                          *simplestartify-filter*
+
+"/" and CTRL-F narrow the dashboard as you type.  Each keystroke re-draws from
+the model already in memory - no file is stat'ed and no directory is scanned -
+matching the typed text case-insensitively against the entry label and against
+the path, session name or command behind it.  A section with no match
+disappears for as long as the filter is active.
+
+    <BS>                erase the last character
+    <CR>                open the selected entry
+    <Esc>, CTRL-C       clear the filter and leave filter mode
+
+Any other key is ignored rather than ending the mode, so a stray arrow key
+does not discard what has been typed.  The query is shown in the footer as
+well as on the command line, because the command line is gone as soon as
+anything else echoes.
+
+Filtering is what makes a list longer than the nine digit shortcuts usable:
+entries past the end of a shortcut alphabet are drawn without a "[key]" marker
+and are reached with "j"/"k" or by typing.  See |g:simplestartify_recent_count|.
 
 The "?" list is built from the entries the buffer actually has mapped, so it
 always names the current session letters.  Those letters replace the
@@ -277,9 +299,10 @@ empty list is honoured and skips nothing; a pattern that does not compile is
 dropped during startup normalization rather than throwing on every draw.
 
                                               *g:simplestartify_recent_count*
-Maximum recent files to show.  Default 7, clamped to 0..9 because the entries
-use the keys 1..9.  It is the default limit of every "files", "dir" and
-"project" section; those sections share the 1..9 pool.
+Maximum recent files to show.  Default 7, clamped to 0..50.  It is the default
+limit of every "files", "dir" and "project" section, and those sections share
+one pool of the digit shortcuts 1..9; entries past the ninth are drawn without
+a marker and are reached with "j"/"k" or |simplestartify-filter|.
 
                                              *g:simplestartify_session_count*
 Maximum sessions to show.  Default 4, normalized to the range 0..13.  Each

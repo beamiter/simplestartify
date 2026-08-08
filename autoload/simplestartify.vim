@@ -229,11 +229,22 @@ enddef
 # the pointer to the full list.
 def Footer(width: number): string
   if width >= 72
-    return '<CR> open  s/v/t split  j/k move  r restyle  R refresh  ? keys'
+    return '<CR> open  s/v/t split  / filter  r restyle  R refresh  ? keys'
   elseif width >= 26
-    return '<CR> open   ? keys'
+    return '<CR> open  / filter  ? keys'
   endif
   return '?'
+enddef
+
+# The query goes in the footer, not only on the command line: the command line
+# is gone the moment anything else echoes, and a dashboard showing a subset of
+# its entries with no visible reason is a confusing place to be.
+def FilterFooter(query: string, width: number): string
+  var shown = 'filter: ' .. query
+  if width >= 48
+    return shown .. '   <CR> open  <BS> erase  <Esc> clear'
+  endif
+  return shown
 enddef
 
 const SPECIAL_ENTRIES = [
@@ -326,7 +337,9 @@ def Model(): dict<any>
     (_, kind) => index(FILE_SECTIONS, kind) >= 0))
   var candidates: list<string> = wants_files ? RecentCandidates() : []
   var used: dict<bool> = {}
-  var recent_limit = Count('simplestartify_recent_count', 7, len(RECENT_KEYS))
+  # Not capped at the nine digits any more: entries past the alphabet render
+  # without a marker and are reached with the cursor or the filter.
+  var recent_limit = Count('simplestartify_recent_count', 7, CANDIDATE_SCAN)
   var session_limit = Count('simplestartify_session_count', 4, len(SESSION_KEYS))
 
   var sections: list<dict<any>> = []
@@ -440,6 +453,7 @@ def ConfigureBuffer(origin: number)
   &l:filetype = 'startify'
   b:simplestartify = 1
   b:simplestartify_origin = origin
+  b:simplestartify_query = ''
 enddef
 
 const MUTED_TEXT = '(none yet)'
@@ -565,6 +579,10 @@ def InstallMappings(actions: dict<any>)
   nnoremap <buffer><silent> D <ScriptCmd>simplestartify#ForgetRecent()<CR>
   nnoremap <buffer><silent> ? <ScriptCmd>simplestartify#Help()<CR>
   nnoremap <buffer><silent> g? <ScriptCmd>simplestartify#Help()<CR>
+  # Searching a generated scratch buffer is not a thing anyone wants to do, so
+  # "/" is worth more as the filter, the way mini.starter and telescope use it.
+  nnoremap <buffer><silent> / <ScriptCmd>simplestartify#Filter()<CR>
+  nnoremap <buffer><silent> <C-f> <ScriptCmd>simplestartify#Filter()<CR>
   var installed: list<string> = []
   for action in values(actions)
     var key = get(action, 'key', '')
@@ -585,16 +603,47 @@ enddef
 # Re-render from the cached model.  Everything expensive - stat'ing every
 # recent file, globbing and mtime-sorting the session directory - lives in
 # Model(); a resize changes none of it, so a resize must not pay for it.
+def Matches(entry: dict<any>, needle: string): bool
+  # Substring, over everything the entry is addressed by: what a user types is
+  # a piece of the name they can see, or a piece of the path behind it.
+  var haystack = tolower(join([get(entry, 'label', ''), get(entry, 'path', ''),
+    get(entry, 'name', ''), get(entry, 'command', '')], ' '))
+  return stridx(haystack, tolower(needle)) >= 0
+enddef
+
+# Filtering is a pure transform of the cached model, so narrowing costs one
+# pass over a list already in memory - no stat, no glob - which is what makes
+# it usable on every keystroke.
+def Filtered(model: dict<any>, query: string): dict<any>
+  if empty(query)
+    return model
+  endif
+  var sections: list<dict<any>> = []
+  for section in get(model, 'sections', [])
+    var entries = filter(copy(get(section, 'entries', [])),
+      (_, entry) => Matches(entry, query))
+    # A section with no match disappears entirely while filtering: "(none
+    # yet)" is an answer about the section, not about the query.
+    if !empty(entries)
+      add(sections, extend(copy(section), {entries: entries}))
+    endif
+  endfor
+  return extend(copy(model), {sections: sections})
+enddef
+
 def Layout(style: string, selected_key: string = '')
   var model: dict<any> = get(b:, 'simplestartify_model', {})
   if empty(model)
     model = Rebuild()
   endif
   var width = DashboardWidth()
+  var query = get(b:, 'simplestartify_query', '')
   # The footer is the one part of the model that depends on the width, so it
   # is resolved here rather than baked into the cache.
   var layout = simplestartify#ui#Build(
-    extend(copy(model), {footer: Footer(width)}), style, width)
+    extend(Filtered(model, query),
+      {footer: empty(query) ? Footer(width) : FilterFooter(query, width)}),
+    style, width)
   setlocal modifiable
   silent! execute 'keepjumps %delete _'
   var lines = get(layout, 'lines', [''])
@@ -723,6 +772,62 @@ export def NextStyle()
   last_style = style
   # Only the deal changed, not the data, so re-lay out the cached model.
   Layout(style, selected)
+enddef
+
+# One keystroke of filter mode, kept apart from the loop below so the state
+# machine can be driven directly - by a test, or by any other input source -
+# without a blocking read.  Returns whether filtering continues.
+export def FilterKey(char: string): bool
+  if !IsDashboard() || empty(char)
+    return false
+  endif
+  var query = get(b:, 'simplestartify_query', '')
+  if char ==# "\<Esc>" || char ==# "\<C-c>"
+    b:simplestartify_query = ''
+    Relayout()
+    return false
+  endif
+  if char ==# "\<CR>" || char ==# "\<NL>"
+    Activate()
+    return false
+  endif
+  if char ==# "\<BS>" || char ==# "\<C-h>" || char2nr(char) == 127
+    b:simplestartify_query = strcharpart(query, 0, max([0, strchars(query) - 1]))
+  elseif strchars(char) == 1 && char2nr(char) >= 32
+    b:simplestartify_query = query .. char
+  else
+    # An unhandled key is ignored rather than ending the filter: a stray
+    # arrow key should not throw away what has been typed.
+    return true
+  endif
+  Relayout()
+  return true
+enddef
+
+# Nine digits was a hard ceiling on how many recent files could be reached at
+# all.  Typing narrows the model instead, so the tenth file is one character
+# away rather than unreachable.
+export def Filter()
+  if !IsDashboard()
+    return
+  endif
+  b:simplestartify_query = ''
+  Relayout()
+  while true
+    echohl ModeMsg
+    echo '/' .. get(b:, 'simplestartify_query', '')
+    echohl None
+    var char = ''
+    try
+      char = getcharstr()
+    catch /^Vim:Interrupt$/
+      char = "\<Esc>"
+    endtry
+    if !FilterKey(char)
+      break
+    endif
+  endwhile
+  echo ''
 enddef
 
 export def Relayout()
@@ -924,6 +1029,7 @@ const FIXED_KEYS = [
   ['s, CTRL-X', 'open it in a split'],
   ['v, CTRL-V', 'open it in a vertical split'],
   ['t, CTRL-T', 'open it in a new tab'],
+  ['/, CTRL-F', 'filter entries as you type'],
   ['j, k', 'next / previous entry'],
   ['<Tab>, <S-Tab>', 'next / previous entry'],
   ['r', 'deal another UI style'],

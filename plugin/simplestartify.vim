@@ -242,7 +242,10 @@ g:simplestartify_commands = Commands(Legacy('commands', []))
 # An empty list here is a real request - "skip nothing" - unlike an empty
 # section list, so it is honoured rather than replaced by the default.
 g:simplestartify_skiplist = Patterns(Legacy('skiplist', DEFAULT_SKIPLIST))
-g:simplestartify_recent_count = Clamp(Legacy('recent_count', 7), 7, 0, 9)
+# Nine is the digit alphabet, not the ceiling: entries past it are drawn
+# without a marker and reached with j/k or the "/" filter, so a larger list is
+# now a usable request rather than a broken one.
+g:simplestartify_recent_count = Clamp(Legacy('recent_count', 7), 7, 0, 50)
 g:simplestartify_session_count = Clamp(Legacy('session_count', 4), 4, 0, 13)
 g:simplestartify_session_dir = Text(
   Legacy('session_dir', '~/.vim/session'), '~/.vim/session')

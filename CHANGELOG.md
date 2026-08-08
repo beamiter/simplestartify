@@ -37,6 +37,15 @@ All notable changes to SimpleStartify are documented here.
   the rename so a session carrying extra state is still replaced atomically.
   A variable holding something `string()` cannot render as sourceable text is
   skipped instead of producing a session that fails to load.
+- Added incremental filtering: `/` and `<C-f>` narrow the dashboard as you
+  type, matching the label and the path, session name or command behind it.
+  Each keystroke re-draws from the cached model, so no file is stat'ed and no
+  directory is scanned while filtering, and the cached model itself is left
+  whole so backspacing costs nothing. The query is shown in the footer as well
+  as on the command line.
+- `g:simplestartify_recent_count` now accepts up to 50 instead of 9. Nine was
+  the digit alphabet, not a sensible ceiling: entries past it are drawn
+  without a marker and reached with `j`/`k` or the filter.
 - Added the `User` events `SimpleStartifySessionSavePre`, `SavePost`,
   `LoadPre` and `LoadPost`. `SavePre` runs inside the same `try` as the write,
   so a hook that throws fails the save and leaves the old session file intact.
