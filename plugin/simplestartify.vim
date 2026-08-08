@@ -248,6 +248,26 @@ g:simplestartify_session_dir = Text(
   Legacy('session_dir', '~/.vim/session'), '~/.vim/session')
 g:simplestartify_session_persistence = Flag(
   Legacy('session_persistence', 0), 0)
+g:simplestartify_session_autoload = Flag(Legacy('session_autoload', 0), 0)
+
+def Names(value: any): list<string>
+  if type(value) != v:t_list
+    return []
+  endif
+  return filter(mapnew(value, (_, item) => type(item) == v:t_string ? item : ''),
+    (_, item) => item =~# '^g:[A-Za-z_][A-Za-z0-9_]*$')
+enddef
+
+def Strings(value: any): list<string>
+  if type(value) != v:t_list
+    return []
+  endif
+  return filter(mapnew(value, (_, item) => type(item) == v:t_string ? item : ''),
+    (_, item) => !empty(item))
+enddef
+
+g:simplestartify_session_savevars = Names(Legacy('session_savevars', []))
+g:simplestartify_session_savecmds = Strings(Legacy('session_savecmds', []))
 g:simplestartify_change_to_vcs_root = Flag(
   Legacy('change_to_vcs_root', 0), 0)
 g:simplestartify_change_to_dir = Flag(Legacy('change_to_dir', 0), 0)
@@ -310,7 +330,10 @@ simplestartify#SetupHighlights()
 
 augroup SimpleStartify
   autocmd!
-  autocmd VimEnter * call simplestartify#AutoOpen()
+  autocmd VimEnter * call simplestartify#Start()
+  # Only with g:simplestartify_session_autoload; the handler is a no-op
+  # otherwise, and it refuses to run while a session is already active.
+  autocmd DirChanged * call simplestartify#session#Autoload()
   autocmd BufWinEnter,BufWritePost * call simplestartify#mru#Touch()
   # Registered before the session hook so a failing recent-files write can
   # never cost the user their session; mru#Save() swallows its own errors.

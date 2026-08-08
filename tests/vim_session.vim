@@ -82,6 +82,93 @@ assert_notmatch('stale marker', join(readfile(marker_session), "\n"))
 SLoad!
 assert_equal(marker_session, v:this_session)
 
+# Save hooks and saved state.  The extra lines go into the temporary before
+# the rename, so a session carrying variables is still replaced in one step.
+g:hooks = []
+augroup SimpleStartifyHookTest
+  autocmd!
+  autocmd User SimpleStartifySessionSavePre add(g:hooks, 'save-pre')
+  autocmd User SimpleStartifySessionSavePost add(g:hooks, 'save-post')
+  autocmd User SimpleStartifySessionLoadPre add(g:hooks, 'load-pre')
+  autocmd User SimpleStartifySessionLoadPost add(g:hooks, 'load-post')
+augroup END
+g:kept_state = {'window': 'left', 'count': 3}
+# A capital is required for a Funcref in a global, and a Funcref is the point:
+# it cannot be written as text that sources back.
+g:DroppedState = function('empty')
+g:simplestartify_session_savevars = ['g:kept_state', 'g:DroppedState',
+  'g:missing_state']
+g:simplestartify_session_savecmds = ['let g:from_savecmds = 1']
+execute 'edit! ' .. fnameescape(file)
+assert_true(simplestartify#session#Save(true, 'stateful'))
+assert_equal(['save-pre', 'save-post'], g:hooks)
+var stateful = join(readfile(TEMP .. '/sessions/stateful'), "\n")
+assert_match("let g:kept_state = {'window': 'left', 'count': 3}", stateful)
+assert_match('let g:from_savecmds = 1', stateful)
+# A Funcref cannot be written as sourceable text, and a name that is not set
+# has nothing to write; neither may reach the session file.
+assert_notmatch('g:DroppedState', stateful)
+assert_notmatch('g:missing_state', stateful)
+unlet g:kept_state
+g:hooks = []
+assert_true(simplestartify#session#Load(false, 'stateful'))
+assert_equal(['load-pre', 'load-post'], g:hooks)
+assert_equal({'window': 'left', 'count': 3}, g:kept_state)
+assert_equal(1, g:from_savecmds)
+
+# A save hook that throws fails the save.  The temporary is removed and the
+# previous session file is left exactly as it was, rather than being replaced
+# by half a workspace.
+augroup SimpleStartifyHookTest
+  autocmd! User SimpleStartifySessionSavePre
+  autocmd User SimpleStartifySessionSavePre throw 'hook refused'
+augroup END
+var intact = readfile(TEMP .. '/sessions/stateful')
+assert_false(simplestartify#session#Save(true, 'stateful'))
+assert_equal(intact, readfile(TEMP .. '/sessions/stateful'))
+assert_equal([], simplestartify#session#TempLeftovers())
+augroup SimpleStartifyHookTest
+  autocmd! User SimpleStartifySessionSavePre
+augroup END
+
+g:simplestartify_session_savevars = []
+g:simplestartify_session_savecmds = []
+
+# A project session is a Session.vim in the working directory.  It is loaded
+# through the ordinary path, so it cannot skip the modified-buffer refusal,
+# and it is never recorded as the last session: bare :SLoad! must not resolve
+# to a file this plugin does not manage.
+mkdir(TEMP .. '/workspace', 'p')
+writefile(['let g:workspace_loaded = 1'], TEMP .. '/workspace/Session.vim')
+execute 'lcd ' .. fnameescape(TEMP .. '/workspace')
+v:this_session = ''
+g:simplestartify_session_autoload = 0
+assert_false(simplestartify#session#Autoload())
+assert_equal(0, get(g:, 'workspace_loaded', 0))
+
+g:simplestartify_session_autoload = 1
+enew!
+setline(1, 'unsaved work')
+assert_false(simplestartify#session#Autoload())
+assert_equal(0, get(g:, 'workspace_loaded', 0))
+bwipeout!
+
+var pointer_before = readfile(TEMP .. '/sessions/.simplestartify-last')
+assert_true(simplestartify#session#Autoload())
+assert_equal(1, g:workspace_loaded)
+assert_equal(fnamemodify(TEMP .. '/workspace/Session.vim', ':p'), v:this_session)
+assert_equal(pointer_before, readfile(TEMP .. '/sessions/.simplestartify-last'))
+
+# An active session is the user's current answer to "what am I working on",
+# so a second autoload - the DirChanged case - leaves it alone.
+g:workspace_loaded = 0
+assert_false(simplestartify#session#Autoload())
+assert_equal(0, g:workspace_loaded)
+v:this_session = ''
+g:simplestartify_session_autoload = 0
+execute 'lcd ' .. fnameescape(ROOT)
+autocmd! SimpleStartifyHookTest
+
 assert_false(simplestartify#session#Delete(false, 'work'))
 assert_true(simplestartify#session#Delete(true, 'work'))
 assert_false(filereadable(session_path))

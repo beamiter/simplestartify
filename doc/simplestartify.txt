@@ -295,6 +295,43 @@ Automatically rewrite the active managed session at |VimLeavePre| and before
 a session outside |g:simplestartify_session_dir|.  Explicit |:SClose| always
 saves the active managed session regardless of this option.
 
+                                         *g:simplestartify_session_autoload*
+Load a "Session.vim" from the working directory when there is no active
+session.  Default 0.  It is tried at |VimEnter|, before the dashboard would
+open, and on |DirChanged|, so entering a project restores its workspace.
+
+The file is loaded through the ordinary |:SLoad| path, so it cannot skip any
+of the guarantees in |simplestartify-sessions|: modified listed buffers refuse
+the load, the active managed session is persisted first when that is enabled,
+and a session that throws is rolled back.  It is never recorded as the last
+session, and because its parent is not |g:simplestartify_session_dir| it is
+never rewritten automatically either.
+
+A "Session.vim" is sourced Vimscript.  Turning this option on means every
+directory you enter may run code; enable it only for directories you trust.
+An active |v:this_session| is never replaced, so this cannot take a workspace
+away from you mid-session.
+
+                                         *g:simplestartify_session_savevars*
+Global variable names to store in a session, for example >
+
+    let g:simplestartify_session_savevars = ['g:my_project_root']
+<
+Default [].  Each name must match "g:" followed by an identifier; other items
+are discarded during startup normalization.  A name that is unset when the
+session is written, or holds a Funcref, job or channel - which |string()|
+cannot render as text that sources back - is skipped rather than writing a
+session that fails to load.
+
+                                         *g:simplestartify_session_savecmds*
+Ex command lines to append to a session verbatim, for example >
+
+    let g:simplestartify_session_savecmds = ['SimpleTreeOpen']
+<
+Default [].  Both lists are appended to the temporary file after |:mksession|
+and before it is renamed into place, so a session carrying extra state is
+still replaced atomically.
+
                                         *g:simplestartify_change_to_vcs_root*
 After opening a recent file, use |:lcd| to change to its nearest Git root.
 Both a .git directory and a .git file are recognized.  Default 0.
@@ -554,9 +591,21 @@ The following |User| events are emitted:
     StartifyReady                   after the dashboard is rendered
     SimpleStartifySessionLoaded     after a session is sourced successfully
                                       *simplestartify-session-loaded*
+    SimpleStartifySessionSavePre    before |:mksession| writes the temporary
+    SimpleStartifySessionSavePost   after the session is renamed into place
+    SimpleStartifySessionLoadPre    before the listed buffers are deleted and
+                                    the session is sourced
+    SimpleStartifySessionLoadPost   immediately after
+                                    SimpleStartifySessionLoaded
 
 The three ready events are emitted in the order shown on every successful
 open.  They use <nomodeline>.
+
+The save and load events wrap every write and every load, including the
+automatic ones from |g:simplestartify_session_persistence|, |:SClose| and
+|g:simplestartify_session_autoload|.  SavePre runs inside the same |try| as
+the write, so a hook that throws fails the save and leaves the previous
+session file untouched rather than replacing it with half a workspace.
 
 ==============================================================================
 10. PLUG MAPPINGS                                   *simplestartify-mappings*

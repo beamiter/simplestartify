@@ -26,6 +26,20 @@ All notable changes to SimpleStartify are documented here.
   and opened with the cursor, instead of being given a fake `[?]` key.
 - `:SimpleStartifyHealth` gained a SECTIONS block: what would be drawn, with
   entry counts, and which configured section was left out for being empty.
+- Added `g:simplestartify_session_autoload`: with no active session, a
+  `Session.vim` in the working directory is loaded at `VimEnter` before the
+  dashboard would open, and on `DirChanged`. It goes through the ordinary load
+  path, so the modified-buffer refusal, the pre-load persistence write and the
+  rollback snapshot all still apply, and it is never adopted as the last
+  session or rewritten automatically.
+- Added `g:simplestartify_session_savevars` and
+  `g:simplestartify_session_savecmds`, appended to the temporary file before
+  the rename so a session carrying extra state is still replaced atomically.
+  A variable holding something `string()` cannot render as sourceable text is
+  skipped instead of producing a session that fails to load.
+- Added the `User` events `SimpleStartifySessionSavePre`, `SavePost`,
+  `LoadPre` and `LoadPost`. `SavePre` runs inside the same `try` as the write,
+  so a hook that throws fails the save and leaves the old session file intact.
 
 - Recent files are now tracked as they are opened instead of being read only
   from `v:oldfiles`, which Vim freezes at startup and never updates. Files

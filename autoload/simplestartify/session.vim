@@ -251,6 +251,43 @@ def Snapshot(): string
   return ''
 enddef
 
+def EmitUser(name: string)
+  if exists('#User#' .. name)
+    execute 'doautocmd <nomodeline> User ' .. name
+  endif
+enddef
+
+def Strings(name: string): list<string>
+  var value = get(g:, name, [])
+  if type(value) != v:t_list
+    return []
+  endif
+  return filter(mapnew(value, (_, item) => type(item) == v:t_string ? item : ''),
+    (_, item) => !empty(item))
+enddef
+
+# Serializable means "string() of it sources back": a Funcref, job or channel
+# would be written as text Vim cannot read, and the failure would surface only
+# when the session is loaded, where it costs the whole restore.
+const SAVEABLE_TYPES = [v:t_number, v:t_string, v:t_list, v:t_dict,
+  v:t_bool, v:t_float, v:t_none]
+
+def ExtraLines(): list<string>
+  var out: list<string> = []
+  for name in Strings('simplestartify_session_savevars')
+    if name !~# '^g:[A-Za-z_][A-Za-z0-9_]*$'
+      continue
+    endif
+    var key = strpart(name, 2)
+    if !has_key(g:, key) || index(SAVEABLE_TYPES, type(get(g:, key))) < 0
+      continue
+    endif
+    add(out, printf('let %s = %s', name, string(get(g:, key))))
+  endfor
+  extend(out, Strings('simplestartify_session_savecmds'))
+  return out
+enddef
+
 def WritePath(path: string): bool
   if empty(path) || !EnsureDir()
     return false
@@ -264,12 +301,21 @@ def WritePath(path: string): bool
   var old_options = &sessionoptions
   var old_session = v:this_session
   try
+    # Hooks run around the whole write, but the extra lines are appended to
+    # the temporary before the rename, so a session with saved variables is
+    # still replaced in one step or not at all.
+    EmitUser('SimpleStartifySessionSavePre')
     set sessionoptions-=options
     execute 'silent mksession! ' .. fnameescape(temporary)
+    var extra = ExtraLines()
+    if !empty(extra) && writefile(extra, temporary, 'as') != 0
+      throw 'cannot append session variables to ' .. temporary
+    endif
     if rename(temporary, path) != 0
       throw 'cannot replace ' .. path
     endif
     v:this_session = path
+    EmitUser('SimpleStartifySessionSavePost')
     return true
   catch
     v:this_session = old_session
@@ -387,6 +433,14 @@ export def Load(bang: bool = false, requested: string = ''): bool
     Notify('no such session: ' .. string(name), true)
     return false
   endif
+  return SourceSession(path, name, bang)
+enddef
+
+# Every load goes through here, whichever side of the trust boundary the file
+# came from: the modified-buffer refusal, the pre-load persistence write and
+# the rollback snapshot are exactly the guarantees an automatically loaded
+# Session.vim must not be allowed to skip.
+def SourceSession(path: string, name: string, bang: bool): bool
   var modified = ModifiedBuffers()
   if !bang && !empty(modified)
     Notify('modified buffers would be discarded; save them or use :SLoad!: '
@@ -403,11 +457,17 @@ export def Load(bang: bool = false, requested: string = ''): bool
     return false
   endif
   try
+    EmitUser('SimpleStartifySessionLoadPre')
     DeleteListedBuffers()
     execute 'silent source ' .. fnameescape(path)
     v:this_session = path
-    RecordLast(name)
+    # A session outside the configured directory is not this plugin's to
+    # remember: bare :SLoad! must never resolve to a file we do not manage.
+    if fnamemodify(path, ':h') ==# Dir()
+      RecordLast(name)
+    endif
     silent! doautocmd <nomodeline> User SimpleStartifySessionLoaded
+    EmitUser('SimpleStartifySessionLoadPost')
     return true
   catch
     var failure = v:exception
@@ -422,6 +482,35 @@ export def Load(bang: bool = false, requested: string = ''): bool
     return false
   finally
     delete(rollback)
+  endtry
+  return false
+enddef
+
+var autoloading = false
+
+# vim-startify's per-project workflow: a Session.vim in the working directory
+# is the project's workspace.  It is loaded through the ordinary path, so
+# ManagedCurrentPath() still refuses to rewrite it later - adopting a file
+# outside the configured directory is not something a start screen should do
+# behind the user's back.
+export def Autoload(): bool
+  if !get(g:, 'simplestartify_session_autoload', 0) || autoloading
+    return false
+  endif
+  # An active session is the user's current answer to "what am I working on";
+  # changing directory must not replace it.
+  if !empty(v:this_session)
+    return false
+  endif
+  var path = fnamemodify(getcwd() .. '/Session.vim', ':p')
+  if getftype(path) !=# 'file' || !filereadable(path)
+    return false
+  endif
+  autoloading = true
+  try
+    return SourceSession(path, fnamemodify(path, ':t'), false)
+  finally
+    autoloading = false
   endtry
   return false
 enddef

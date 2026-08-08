@@ -675,6 +675,16 @@ export def Open(requested: string = '')
   EmitUser('StartifyReady')
 enddef
 
+# The VimEnter entry point.  A project session takes precedence over the
+# dashboard: someone who asked for their workspace back does not want a start
+# screen drawn over it first.
+export def Start()
+  if simplestartify#session#Autoload()
+    return
+  endif
+  AutoOpen()
+enddef
+
 export def AutoOpen()
   if !Flag('simplestartify_auto_open', 1)
         \ || argc() != 0

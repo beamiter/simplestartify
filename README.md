@@ -66,6 +66,9 @@ let g:simplestartify_recent_count = 7   " clamped to 0..9
 let g:simplestartify_session_count = 4  " clamped to 0..13
 let g:simplestartify_session_dir = '~/.vim/session'
 let g:simplestartify_session_persistence = 0
+let g:simplestartify_session_autoload = 0
+let g:simplestartify_session_savevars = []
+let g:simplestartify_session_savecmds = []
 
 let g:simplestartify_change_to_vcs_root = 0
 let g:simplestartify_change_to_dir = 0
@@ -87,6 +90,26 @@ four defaults. With more than one eligible style,
 enabled, the active managed session is saved at `VimLeavePre` and before
 `:SLoad` switches sessions. An explicit `:SClose` always saves the active
 managed session, regardless of this setting.
+
+`g:simplestartify_session_autoload` turns a directory into a workspace: with
+no active session, a `Session.vim` in the working directory is loaded at
+`VimEnter` (before the dashboard would open) and on `DirChanged`. It goes
+through the ordinary load path, so the modified-buffer refusal and the
+rollback snapshot still apply, and it is never recorded as the last session or
+rewritten automatically -- its parent is not the configured session directory.
+A `Session.vim` is sourced Vimscript, so enable this only for directories you
+trust.
+
+`g:simplestartify_session_savevars` and `g:simplestartify_session_savecmds`
+add global variables and Ex command lines to every session this plugin writes.
+They are appended to the temporary file before it is renamed into place, so a
+session carrying extra state is still replaced atomically. A variable that is
+unset, or holds something `string()` cannot render as sourceable text such as
+a Funcref, is skipped rather than producing a session that fails to load.
+
+Sessions also emit `User SimpleStartifySessionSavePre`/`SavePost` and
+`LoadPre`/`LoadPost`. `SavePre` runs inside the same `try` as the write, so a
+hook that throws fails the save and leaves the previous session file intact.
 
 ### Sections
 
