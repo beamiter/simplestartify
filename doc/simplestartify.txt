@@ -286,7 +286,8 @@ returned by simplestartify#Health() for scripting.  Members: "ok", "report"
 and "oldfiles_count".
 
 "ok" is false when any check produced an ERROR line, which now includes an
-existing but unwritable session directory.  "session_writable" is true only
+existing but unwritable session directory and an existing but unwritable
+directory for |g:simplestartify_mru_file|.  "session_writable" is true only
 when the directory already exists and is writable; an absent directory is not
 an error, because the first |:SSave| creates it.  When both "mru_count" and
 "oldfiles_count" are 0, the recent-files section is empty because nothing has

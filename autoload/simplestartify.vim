@@ -800,6 +800,7 @@ enddef
 
 def CheckRecent(report: list<string>, result: dict<any>): bool
   add(report, 'RECENT FILES')
+  var ok = true
   Say(report, result.mru_count > 0 || result.oldfiles_count > 0 ? 'OK' : 'WARN',
     printf('%d tracked this session, %d from v:oldfiles',
       result.mru_count, result.oldfiles_count),
@@ -822,11 +823,15 @@ def CheckRecent(report: list<string>, result: dict<any>): bool
     var writable = isdirectory(directory)
           \ ? filewritable(directory) == 2
           \ : true
+    # An unwritable cache directory means the record can never survive a
+    # restart, which is a failure and not a remark: it has to reach `ok` the
+    # same way the unwritable session directory does.
+    ok = writable
     Say(report, writable ? 'OK' : 'ERROR', 'cache: ' .. result.mru_file,
       writable ? '' : 'its directory is not writable')
   endif
   add(report, '')
-  return true
+  return ok
 enddef
 
 def CheckSessions(report: list<string>, result: dict<any>): bool

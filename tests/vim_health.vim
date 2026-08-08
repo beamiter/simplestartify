@@ -84,6 +84,20 @@ if filewritable(TEMP .. '/sessions') != 2
 endif
 setfperm(TEMP .. '/sessions', 'rwxr-xr-x')
 
+# The recent-file cache gets the same treatment: an existing but unwritable
+# cache directory means the record can never survive a restart, so it is an
+# ERROR line *and* it has to reach "ok".  It used to be reported and ignored.
+mkdir(TEMP .. '/state', 'p')
+setfperm(TEMP .. '/state', 'r-xr-xr-x')
+if filewritable(TEMP .. '/state') != 2
+  # Skipped when the test runs as root, where mode bits do not deny anything.
+  var stuck = simplestartify#Health()
+  assert_false(stuck.ok)
+  assert_match('\[ERROR\].*cache:.*not writable', join(stuck.report, "\n"))
+endif
+setfperm(TEMP .. '/state', 'rwxr-xr-x')
+assert_true(simplestartify#Health().ok)
+
 # The report renders into its own scratch buffer.
 SimpleStartifyHealth
 assert_equal('nofile', &buftype)
