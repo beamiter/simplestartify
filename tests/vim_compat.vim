@@ -103,6 +103,8 @@ g:startify_recent_count = 3
 g:startify_session_count = 2
 g:startify_session_persistence = 1
 g:startify_session_autoload = 1
+g:startify_session_savevars = ['g:kept_var', 'not a variable name']
+g:startify_session_savecmds = ['echo "kept"', '']
 g:startify_change_to_vcs_root = 1
 g:startify_change_to_dir = 1
 g:startify_open_action = 'vsplit'
@@ -131,6 +133,10 @@ assert_equal(3, g:simplestartify_recent_count)
 assert_equal(2, g:simplestartify_session_count)
 assert_equal(1, g:simplestartify_session_persistence)
 assert_equal(1, g:simplestartify_session_autoload)
+# The session-extra lists cross too, and the normalizer that drops entries it
+# cannot use runs on the old spelling exactly as it does on the new one.
+assert_equal(['g:kept_var'], g:simplestartify_session_savevars)
+assert_equal(['echo "kept"'], g:simplestartify_session_savecmds)
 assert_equal(1, g:simplestartify_change_to_vcs_root)
 assert_equal(1, g:simplestartify_change_to_dir)
 assert_equal('vsplit', g:simplestartify_open_action)
