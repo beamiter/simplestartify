@@ -349,8 +349,18 @@ saves the active managed session regardless of this option.
 
                                          *g:simplestartify_session_autoload*
 Load a "Session.vim" from the working directory when there is no active
-session.  Default 0.  It is tried at |VimEnter|, before the dashboard would
-open, and on |DirChanged|, so entering a project restores its workspace.
+session.  Default 0.  It is tried at |VimEnter| when no file was named on the
+command line, before the dashboard would open, and on a global directory
+change - |:cd|, the "global" |DirChanged| scope - so entering a project
+restores its workspace.
+
+Both of those restrictions are about buffers, not taste: loading a session
+deletes every listed buffer first.  A file on the command line therefore wins,
+exactly as it does over the dashboard itself: "vim README.md" opens README.md
+and no session.  A window-local |:lcd| is not entering a project and loads
+nothing - including the |:lcd| this plugin performs after opening a file when
+|g:simplestartify_change_to_dir| or |g:simplestartify_change_to_vcs_root| is
+set, and any |:lcd| another plugin makes.
 
 The file is loaded through the ordinary |:SLoad| path, so it cannot skip any
 of the guarantees in |simplestartify-sessions|: modified listed buffers refuse
@@ -753,8 +763,10 @@ Run the complete local quality gate from the repository root: >
     make check
 <
 It compiles every Vim9 def and runs the smoke, UI/width, section and filter,
-session-safety, recent-files, highlight, health, window-management and
-vim-startify compatibility test scripts.
+session-safety, project-session, recent-files, highlight, health,
+window-management and vim-startify compatibility test scripts.  The
+project-session script starts a child Vim so the |VimEnter| hook is exercised
+the way a user starts an editor, with and without a file argument.
 
 Limits:
 

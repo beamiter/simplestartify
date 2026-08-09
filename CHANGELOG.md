@@ -42,8 +42,14 @@ All notable changes to SimpleStartify are documented here.
 - `:SimpleStartifyHealth` gained a SECTIONS block: what would be drawn, with
   entry counts, and which configured section was left out for being empty.
 - Added `g:simplestartify_session_autoload`: with no active session, a
-  `Session.vim` in the working directory is loaded at `VimEnter` before the
-  dashboard would open, and on `DirChanged`. It goes through the ordinary load
+  `Session.vim` in the working directory is loaded at `VimEnter` when no file
+  was named on the command line, before the dashboard would open, and on a
+  global directory change (`:cd`). Loading a session deletes every listed
+  buffer first, so both limits are load-bearing: `vim README.md` opens
+  README.md and no session, and a window-local `:lcd` -- this plugin's own
+  after `g:simplestartify_change_to_dir` or
+  `g:simplestartify_change_to_vcs_root`, or any other plugin's -- is not
+  entering a project and loads nothing. It goes through the ordinary load
   path, so the modified-buffer refusal, the pre-load persistence write and the
   rollback snapshot all still apply, and it is never adopted as the last
   session or rewritten automatically.
@@ -64,7 +70,10 @@ All notable changes to SimpleStartify are documented here.
   Each keystroke re-draws from the cached model, so no file is stat'ed and no
   directory is scanned while filtering, and the cached model itself is left
   whole so backspacing costs nothing. The query is shown in the footer as well
-  as on the command line.
+  as on the command line. `<CR>` ends filter mode and clears the query with
+  it, so an entry that leaves the dashboard on screen -- a command, a restyle,
+  a session load the modified-buffer check refuses -- does not strand it
+  narrowed under a footer whose keys no longer read anything.
 - `g:simplestartify_recent_count` now accepts up to 50 instead of 9. Nine was
   the digit alphabet, not a sensible ceiling: entries past it are drawn
   without a marker and reached with `j`/`k` or the filter.

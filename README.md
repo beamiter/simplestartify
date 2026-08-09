@@ -115,11 +115,16 @@ managed session, regardless of this setting.
 
 `g:simplestartify_session_autoload` turns a directory into a workspace: with
 no active session, a `Session.vim` in the working directory is loaded at
-`VimEnter` (before the dashboard would open) and on `DirChanged`. It goes
-through the ordinary load path, so the modified-buffer refusal and the
-rollback snapshot still apply, and it is never recorded as the last session or
-rewritten automatically -- its parent is not the configured session directory.
-A `Session.vim` is sourced Vimscript, so enable this only for directories you
+`VimEnter` when no file was named on the command line (before the dashboard
+would open), and on a global directory change (`:cd`). Loading a session
+deletes every listed buffer first, which is why both of those limits exist:
+`vim README.md` opens README.md and no session, and a window-local `:lcd` --
+this plugin's own after `g:simplestartify_change_to_dir`, or any other
+plugin's -- is not a project change and loads nothing. It goes through the
+ordinary load path, so the modified-buffer refusal and the rollback snapshot
+still apply, and it is never recorded as the last session or rewritten
+automatically -- its parent is not the configured session directory. A
+`Session.vim` is sourced Vimscript, so enable this only for directories you
 trust.
 
 `g:simplestartify_session_savevars` and `g:simplestartify_session_savecmds`
@@ -354,7 +359,9 @@ make check
 
 This compiles every Vim9 `def` and runs the smoke, width/layout, random-choice,
 section and filter, recent-files, highlighting, health, session-safety,
-window-management and vim-startify compatibility regression tests.
+project-session, window-management and vim-startify compatibility regression
+tests. The project-session script starts a child Vim so the `VimEnter` hook is
+exercised the way a user starts an editor, with and without a file argument.
 
 ## License
 

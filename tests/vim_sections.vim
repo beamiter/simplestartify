@@ -272,6 +272,35 @@ assert_equal(1, len(b:simplestartify_actions))
 assert_false(simplestartify#FilterKey("\<CR>"))
 assert_equal(ONE, expand('%:p'))
 
+# <CR> on an entry that leaves the dashboard on screen - a command, a restyle,
+# a session load the modified-buffer check refuses - ends filter mode, so it
+# has to end the narrowing with it.  It used to run the entry and leave the
+# buffer pinned to the single match, under a footer still offering <BS> and
+# <Esc> that no longer read anything, and R could not undo it because the
+# layout re-reads the stored query.
+g:simplestartify_commands = [{key: 'k', command: 'TestHit', label: 'keyed bump'}]
+g:simplestartify_lists = [{type: 'files'}, {type: 'commands'}, {type: 'special'}]
+SimpleStartify minimal
+var unfiltered = len(b:simplestartify_actions)
+var hits_before = g:hits
+for char in split('keyed', '\zs')
+  assert_true(simplestartify#FilterKey(char))
+endfor
+assert_equal(1, len(b:simplestartify_actions))
+assert_match('filter: keyed', join(getline(1, '$'), "\n"))
+assert_false(simplestartify#FilterKey("\<CR>"))
+assert_equal(hits_before + 1, g:hits)
+assert_equal('', b:simplestartify_query)
+assert_equal(unfiltered, len(b:simplestartify_actions))
+assert_notmatch('filter:', join(getline(1, '$'), "\n"))
+# R cannot be the recovery either: it re-reads the query, so the narrowing has
+# to be gone before the layout is asked for again.
+SimpleStartifyRefresh
+assert_equal('', b:simplestartify_query)
+assert_equal(unfiltered, len(b:simplestartify_actions))
+g:simplestartify_commands = []
+g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+
 
 # A custom header replaces each layout's built-in banner, and a custom footer
 # replaces the key hints.  Both accept a list of lines.

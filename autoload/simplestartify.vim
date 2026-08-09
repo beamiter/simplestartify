@@ -801,9 +801,12 @@ enddef
 
 # The VimEnter entry point.  A project session takes precedence over the
 # dashboard: someone who asked for their workspace back does not want a start
-# screen drawn over it first.
+# screen drawn over it first.  A file named on the command line outranks both,
+# and for the session that is not a matter of taste: loading one goes through
+# DeleteListedBuffers(), so an unguarded autoload would `bdelete!` the very
+# buffer `vim README.md` asked for.  It is the rule AutoOpen() already applies.
 export def Start()
-  if simplestartify#session#Autoload()
+  if argc() == 0 && simplestartify#session#Autoload()
     return
   endif
   AutoOpen()
@@ -895,7 +898,18 @@ export def FilterKey(char: string): bool
     return false
   endif
   if char ==# "\<CR>" || char ==# "\<NL>"
+    # Filter mode ends here whatever the entry turns out to do.  The query is
+    # cleared first - not after, and not by Relayout alone - because an entry
+    # that leaves the dashboard on screen (a command, a restyle, a session
+    # load refused by the modified-buffer check) would otherwise strand it
+    # narrowed to one line, with a footer offering <BS> and <Esc> that no
+    # longer read anything, and Refresh() re-reads the query so even R could
+    # not undo it.  Activate() still sees the filtered actions, so it opens
+    # what was on screen; the re-layout happens afterwards, and only if the
+    # dashboard is still the current buffer.
+    b:simplestartify_query = ''
     Activate()
+    Relayout()
     return false
   endif
   if char ==# "\<BS>" || char ==# "\<C-h>" || char2nr(char) == 127
@@ -1014,6 +1028,10 @@ def OpenFile(path: string, verb: string)
     return
   endif
   execute OPEN_VERBS[verb].file .. ' ' .. fnameescape(path)
+  # Both of these are a window-local :lcd, which is why the project-session
+  # hook is registered for the "global" DirChanged scope only: this cd is the
+  # tail of opening the file above, not the user entering a project, and
+  # loading a Session.vim here would delete the buffer just opened.
   if Flag('simplestartify_change_to_vcs_root', 0)
     var root = ProjectRoot(path)
     if !empty(root)

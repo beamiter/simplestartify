@@ -361,7 +361,11 @@ augroup SimpleStartify
   autocmd VimEnter * call simplestartify#Start()
   # Only with g:simplestartify_session_autoload; the handler is a no-op
   # otherwise, and it refuses to run while a session is already active.
-  autocmd DirChanged * call simplestartify#session#Autoload()
+  # Deliberately not `*`: that pattern also matches the "window" scope, so
+  # every :lcd - this plugin's own, fzf's, vim-rooter's - would source a
+  # Session.vim and take the buffer that :lcd was following with it.  Loading
+  # a whole workspace is a response to `:cd`, not to one window retargeting.
+  autocmd DirChanged global call simplestartify#session#Autoload()
   autocmd BufWinEnter,BufWritePost * call simplestartify#mru#Touch()
   # Only with g:simplestartify_reopen_on_empty; the handler returns before it
   # allocates a timer otherwise.

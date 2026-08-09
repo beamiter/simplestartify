@@ -1,11 +1,11 @@
-.PHONY: check defcompile test test-vim test-ui test-sections test-session test-mru test-highlight test-health test-window test-compat
+.PHONY: check defcompile test test-vim test-ui test-sections test-session test-project test-mru test-highlight test-health test-window test-compat
 
 check: defcompile test
 
 defcompile:
 	vim -Nu NONE -n -i NONE -es -S tests/defcompile.vim
 
-test: test-vim test-ui test-sections test-session test-mru test-highlight test-health test-window test-compat
+test: test-vim test-ui test-sections test-session test-project test-mru test-highlight test-health test-window test-compat
 
 test-vim:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_smoke.vim
@@ -18,6 +18,9 @@ test-sections:
 
 test-session:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_session.vim
+
+test-project:
+	vim -Nu NONE -n -i NONE -es -S tests/vim_project.vim
 
 test-mru:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_mru.vim

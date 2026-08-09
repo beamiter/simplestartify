@@ -153,9 +153,18 @@ assert_false(simplestartify#session#Autoload())
 assert_equal(0, get(g:, 'workspace_loaded', 0))
 bwipeout!
 
+# A managed session that happens to share the project session's basename is
+# what makes the pointer assertion below discriminating.  RecordLast() ignores
+# a name with no readable file behind it, so without this decoy the pointer
+# stays put whether or not the loader checks that what it sourced is a session
+# this plugin manages - and dropping that check repoints a bare :SLoad! at this
+# unrelated file.
+writefile(['let g:decoy_loaded = 1'], TEMP .. '/sessions/Session.vim')
 var pointer_before = readfile(TEMP .. '/sessions/.simplestartify-last')
+assert_notequal(['Session.vim'], pointer_before)
 assert_true(simplestartify#session#Autoload())
 assert_equal(1, g:workspace_loaded)
+assert_equal(0, get(g:, 'decoy_loaded', 0))
 assert_equal(fnamemodify(TEMP .. '/workspace/Session.vim', ':p'), v:this_session)
 assert_equal(pointer_before, readfile(TEMP .. '/sessions/.simplestartify-last'))
 
