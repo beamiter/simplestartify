@@ -13,7 +13,51 @@ set nomore
 set hidden
 
 const ROOT = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
-const TEMP = resolve(tempname())
+
+# Vim's temporary directory is not necessarily outside a Git repository: a
+# stray /tmp/.git, or a $HOME that is itself a checkout, makes every upward
+# .git search from a fixture find *that* repository instead of nothing.  The
+# change_to_dir fallback below used to be wrapped in a guard that skipped it
+# whenever that happened, which reports a hole in the suite as a pass.  Pick
+# a base whose whole ancestor chain is free of .git instead, so the assertion
+# always runs, and say so loudly if the machine has none.
+def RepoFree(path: string): bool
+  var directory = fnamemodify(path, ':p')
+  while true
+    var stripped = substitute(directory, '[\\/]\+$', '', '')
+    if isdirectory(stripped .. '/.git') || filereadable(stripped .. '/.git')
+      return false
+    endif
+    if empty(stripped)
+      return true
+    endif
+    var parent = fnamemodify(stripped, ':h')
+    if parent ==# stripped
+      return true
+    endif
+    directory = parent
+  endwhile
+  return true
+enddef
+
+def RepoFreeTemp(): string
+  var native = resolve(tempname())
+  if RepoFree(native)
+    return native
+  endif
+  for base in [$XDG_RUNTIME_DIR, '/dev/shm', '/var/tmp', $TMPDIR]
+    if filewritable(base) == 2 && RepoFree(base)
+      return resolve(base) .. '/simplestartify-test-' .. getpid()
+        .. '-' .. fnamemodify(native, ':t')
+    endif
+  endfor
+  assert_report('no repository-free temporary directory on this machine: '
+    .. 'every candidate has a .git above it, so the "outside a repository" '
+    .. 'behaviour cannot be exercised')
+  return native
+enddef
+
+const TEMP = RepoFreeTemp()
 mkdir(TEMP .. '/sessions', 'p')
 mkdir(TEMP .. '/outside', 'p')
 mkdir(TEMP .. '/repo/.git', 'p')
@@ -147,13 +191,14 @@ OpenPath(INSIDE)
 assert_equal(resolve(TEMP .. '/repo'), resolve(getcwd()))
 
 # Outside a repository the Git root cannot win, so the fallback is what is
-# left.  Skipped when the machine has a .git above the temporary directory,
-# which would make this a test of that repository instead.
+# left.  The fixture lives under a repository-free base precisely so this
+# runs unconditionally.
 execute 'lcd ' .. fnameescape(TEMP)
-if empty(finddir('.git', TEMP .. '/plain;')) && empty(findfile('.git', TEMP .. '/plain;'))
-  OpenPath(OUTSIDE)
-  assert_equal(resolve(TEMP .. '/plain'), resolve(getcwd()))
-endif
+assert_true(empty(finddir('.git', TEMP .. '/plain;'))
+  && empty(findfile('.git', TEMP .. '/plain;')),
+  'fixture is inside a repository: ' .. TEMP .. '/plain')
+OpenPath(OUTSIDE)
+assert_equal(resolve(TEMP .. '/plain'), resolve(getcwd()))
 execute 'lcd ' .. fnameescape(TEMP)
 
 # 5. vim-startify's historical __LAST__ pointer.  The migration branch and,

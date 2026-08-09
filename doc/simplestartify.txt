@@ -768,6 +768,14 @@ window-management and vim-startify compatibility test scripts.  The
 project-session script starts a child Vim so the |VimEnter| hook is exercised
 the way a user starts an editor, with and without a file argument.
 
+The fixtures that exercise "outside a repository" behaviour need a temporary
+directory with no ".git" anywhere above it.  Vim's own temporary directory is
+used when it qualifies, and $XDG_RUNTIME_DIR, /dev/shm, /var/tmp or $TMPDIR
+are tried in turn when it does not: a stray /tmp/.git, or a $HOME that is
+itself a checkout, otherwise turns every upward root search into a search of
+that repository.  Those assertions are never skipped - a machine where no
+candidate qualifies fails the gate and says why.
+
 Limits:
 
 - Recent files must still be readable when the dashboard is drawn.

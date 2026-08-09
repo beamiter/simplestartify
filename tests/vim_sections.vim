@@ -11,7 +11,51 @@ set nomore
 set hidden
 
 const ROOT = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
-const TEMP = resolve(tempname())
+
+# Vim's temporary directory is not necessarily outside a Git repository: a
+# stray /tmp/.git, or a $HOME that is itself a checkout, makes every upward
+# .git search from a fixture find *that* repository instead of nothing.  The
+# "outside a repository" assertion below used to be wrapped in a guard that
+# skipped it whenever that happened, which reports a hole in the suite as a
+# pass.  Pick a base whose whole ancestor chain is free of .git instead, so
+# the assertion always runs, and say so loudly if the machine has none.
+def RepoFree(path: string): bool
+  var directory = fnamemodify(path, ':p')
+  while true
+    var stripped = substitute(directory, '[\\/]\+$', '', '')
+    if isdirectory(stripped .. '/.git') || filereadable(stripped .. '/.git')
+      return false
+    endif
+    if empty(stripped)
+      return true
+    endif
+    var parent = fnamemodify(stripped, ':h')
+    if parent ==# stripped
+      return true
+    endif
+    directory = parent
+  endwhile
+  return true
+enddef
+
+def RepoFreeTemp(): string
+  var native = resolve(tempname())
+  if RepoFree(native)
+    return native
+  endif
+  for base in [$XDG_RUNTIME_DIR, '/dev/shm', '/var/tmp', $TMPDIR]
+    if filewritable(base) == 2 && RepoFree(base)
+      return resolve(base) .. '/simplestartify-test-' .. getpid()
+        .. '-' .. fnamemodify(native, ':t')
+    endif
+  endfor
+  assert_report('no repository-free temporary directory on this machine: '
+    .. 'every candidate has a .git above it, so the "outside a repository" '
+    .. 'behaviour cannot be exercised')
+  return native
+enddef
+
+const TEMP = RepoFreeTemp()
 mkdir(TEMP .. '/sessions', 'p')
 mkdir(TEMP .. '/project/.git', 'p')
 mkdir(TEMP .. '/project/deep', 'p')
@@ -158,15 +202,15 @@ assert_equal([ONE], Paths('project'))
 assert_equal([PIN, THREE], Paths('files'))
 
 # Outside a repository the project section falls back to the working
-# directory rather than showing everything on the machine.  Skipped when the
-# machine happens to have a .git above the temporary directory, which would
-# make this a test of that repository instead.
+# directory rather than showing everything on the machine.  The fixture lives
+# under a repository-free base precisely so this runs unconditionally.
 execute 'lcd ' .. fnameescape(TEMP .. '/elsewhere')
-if empty(finddir('.git', getcwd() .. ';')) && empty(findfile('.git', getcwd() .. ';'))
-  SimpleStartifyRefresh
-  assert_equal([THREE], Paths('dir'))
-  assert_equal([], Paths('project'))
-endif
+assert_true(empty(finddir('.git', getcwd() .. ';'))
+  && empty(findfile('.git', getcwd() .. ';')),
+  'fixture is inside a repository: ' .. getcwd())
+SimpleStartifyRefresh
+assert_equal([THREE], Paths('dir'))
+assert_equal([], Paths('project'))
 
 # A custom skiplist replaces the default one and applies to paths that were
 # recorded before it was set, not only to new visits.
