@@ -155,6 +155,16 @@ All notable changes to SimpleStartify are documented here.
 - Moved the atomic temp-then-rename primitive into
   `autoload/simplestartify/atomic.vim` so the session store and the
   recent-files cache share one implementation and one reserved namespace.
+- Moved the repository-free temporary directory the "outside a repository"
+  fixtures need into `tests/fixture.vim`, and gave it back the two things
+  Vim's own `tempname()` directory was providing before the tests stepped
+  outside it. It is now removed on `VimLeave` as well as at the end of the
+  script, so a run that dies part way through no longer leaves a fixture tree
+  behind for good; and it is created 0700, and created in a way that fails
+  when the name already exists, so a symlink pre-created by another user of
+  the machine under world-writable `/dev/shm` or `/var/tmp` can no longer
+  redirect the fixture into a directory of their choosing. `make check` gained
+  a `test-fixture` target covering both.
 
 ## 0.1.0 - 2026-08-07
 

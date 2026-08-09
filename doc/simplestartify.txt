@@ -762,9 +762,9 @@ Run the complete local quality gate from the repository root: >
 
     make check
 <
-It compiles every Vim9 def and runs the smoke, UI/width, section and filter,
-session-safety, project-session, recent-files, highlight, health,
-window-management and vim-startify compatibility test scripts.  The
+It compiles every Vim9 def and runs the fixture-helper, smoke, UI/width,
+section and filter, session-safety, project-session, recent-files, highlight,
+health, window-management and vim-startify compatibility test scripts.  The
 project-session script starts a child Vim so the |VimEnter| hook is exercised
 the way a user starts an editor, with and without a file argument.
 
@@ -775,6 +775,15 @@ are tried in turn when it does not: a stray /tmp/.git, or a $HOME that is
 itself a checkout, otherwise turns every upward root search into a search of
 that repository.  Those assertions are never skipped - a machine where no
 candidate qualifies fails the gate and says why.
+
+Stepping outside Vim's own temporary directory costs two guarantees, so
+tests/fixture.vim provides both and tests/vim_fixture.vim asserts them.  The
+directory is removed on |VimLeave| as well as at the end of the script, so a
+run that dies part way through leaves nothing behind.  And it is created 0700,
+and created in a way that fails when the name is already taken: /dev/shm and
+/var/tmp are world-writable, so a name another user of the machine can guess
+and pre-create as a symlink would otherwise send the whole fixture wherever
+they pointed it.
 
 Limits:
 

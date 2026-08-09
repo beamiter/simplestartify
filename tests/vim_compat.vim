@@ -14,50 +14,14 @@ set hidden
 
 const ROOT = fnamemodify(resolve(expand('<sfile>:p')), ':h:h')
 
-# Vim's temporary directory is not necessarily outside a Git repository: a
-# stray /tmp/.git, or a $HOME that is itself a checkout, makes every upward
-# .git search from a fixture find *that* repository instead of nothing.  The
-# change_to_dir fallback below used to be wrapped in a guard that skipped it
-# whenever that happened, which reports a hole in the suite as a pass.  Pick
-# a base whose whole ancestor chain is free of .git instead, so the assertion
-# always runs, and say so loudly if the machine has none.
-def RepoFree(path: string): bool
-  var directory = fnamemodify(path, ':p')
-  while true
-    var stripped = substitute(directory, '[\\/]\+$', '', '')
-    if isdirectory(stripped .. '/.git') || filereadable(stripped .. '/.git')
-      return false
-    endif
-    if empty(stripped)
-      return true
-    endif
-    var parent = fnamemodify(stripped, ':h')
-    if parent ==# stripped
-      return true
-    endif
-    directory = parent
-  endwhile
-  return true
-enddef
+# The change_to_dir fallback below used to be wrapped in a guard that skipped
+# it whenever Vim's own temporary directory happened to sit inside a Git
+# checkout, which reports a hole in the suite as a pass.  tests/fixture.vim
+# picks a repository-free base instead - and removes it however this run ends,
+# a base of its own choosing being one nobody else cleans up.
+import './fixture.vim' as fixture
 
-def RepoFreeTemp(): string
-  var native = resolve(tempname())
-  if RepoFree(native)
-    return native
-  endif
-  for base in [$XDG_RUNTIME_DIR, '/dev/shm', '/var/tmp', $TMPDIR]
-    if filewritable(base) == 2 && RepoFree(base)
-      return resolve(base) .. '/simplestartify-test-' .. getpid()
-        .. '-' .. fnamemodify(native, ':t')
-    endif
-  endfor
-  assert_report('no repository-free temporary directory on this machine: '
-    .. 'every candidate has a .git above it, so the "outside a repository" '
-    .. 'behaviour cannot be exercised')
-  return native
-enddef
-
-const TEMP = RepoFreeTemp()
+const TEMP = fixture.RepoFreeTemp()
 mkdir(TEMP .. '/sessions', 'p')
 mkdir(TEMP .. '/outside', 'p')
 mkdir(TEMP .. '/repo/.git', 'p')

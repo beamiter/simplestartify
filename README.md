@@ -357,11 +357,20 @@ Entries are highlighted with text properties where the build supports them, so
 make check
 ```
 
-This compiles every Vim9 `def` and runs the smoke, width/layout, random-choice,
-section and filter, recent-files, highlighting, health, session-safety,
-project-session, window-management and vim-startify compatibility regression
-tests. The project-session script starts a child Vim so the `VimEnter` hook is
-exercised the way a user starts an editor, with and without a file argument.
+This compiles every Vim9 `def` and runs the fixture-helper, smoke, width/layout,
+random-choice, section and filter, recent-files, highlighting, health,
+session-safety, project-session, window-management and vim-startify
+compatibility regression tests. The project-session script starts a child Vim so
+the `VimEnter` hook is exercised the way a user starts an editor, with and
+without a file argument.
+
+Fixtures that must not look like they sit inside a Git repository cannot always
+use Vim's own temporary directory -- a stray `/tmp/.git`, or a `$HOME` that is
+itself a checkout, would make every upward root search find that repository.
+`tests/fixture.vim` picks a repository-free base instead, removes it on
+`VimLeave` so an aborted run leaves nothing behind, and creates it 0700 in a way
+that fails on an already-taken name, the fallback bases (`/dev/shm`, `/var/tmp`)
+being world-writable and the name guessable.
 
 ## License
 
