@@ -170,8 +170,9 @@ it existing, and |g:simplestartify_mru_persist| turns it off entirely.
 5a. SECTIONS                                        *simplestartify-sections*
 
 |g:simplestartify_lists| decides which sections the dashboard draws and in
-what order.  Seven section types exist:
+what order.  Eight section types exist:
 
+    remote      recent SimpleRemote SSH or Docker workspaces
     files       recent files, anywhere
     dir         recent files below the working directory
     project     recent files below the working directory's Git root, or
@@ -266,7 +267,7 @@ one member.  Default 1.
                                                    *g:simplestartify_lists*
 The sections to draw, in order.  Default: >
 
-    [{'type': 'files'}, {'type': 'sessions'}, {'type': 'bookmarks'},
+    [{'type': 'remote'}, {'type': 'files'}, {'type': 'sessions'}, {'type': 'bookmarks'},
      {'type': 'commands'}, {'type': 'special'}]
 <
 Each item is a dictionary with a "type" from |simplestartify-sections|, or a
@@ -277,10 +278,16 @@ bare type string.  Two optional members: >
 "header" replaces the section's built-in name in every layout and may also be
 a list of strings, of which the first non-blank one is used, so a
 g:startify_lists value can be reused as is.  "limit" is the maximum number of
-entries, overriding |g:simplestartify_recent_count| and
-|g:simplestartify_session_count| for that section.  Unknown types and other
+entries, overriding |g:simplestartify_remote_count|,
+|g:simplestartify_recent_count| and |g:simplestartify_session_count| for that
+section.  Unknown types and other
 value types are discarded during startup normalization; if that leaves
 nothing, the default list is restored.
+
+The "remote" section is omitted when SimpleRemote is unavailable or has no
+history.  It consumes SimpleRemote's public API rather than its history file.
+Pressing Enter restores the complete connection specification and opens the
+remote SimpleTree workspace as soon as the connection is ready.
 
                                                *g:simplestartify_bookmarks*
 Paths pinned to the dashboard, in order.  Default [].  Each item is either a
@@ -326,6 +333,11 @@ both when a buffer is recorded and when the dashboard is drawn, so adding a
 pattern also hides paths recorded earlier and paths from |v:oldfiles|.  An
 empty list is honoured and skips nothing; a pattern that does not compile is
 dropped during startup normalization rather than throwing on every draw.
+
+                                              *g:simplestartify_remote_count*
+Maximum recent SimpleRemote workspaces to show.  Default 3, clamped to 0..12.
+Set it to 0 to hide remote history without changing
+|g:simplestartify_lists|.
 
                                               *g:simplestartify_recent_count*
 Maximum recent files to show.  Default 7, clamped to 0..50.  It is the default

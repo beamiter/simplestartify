@@ -171,6 +171,58 @@ def SessionEntries(limit: number, letters: list<string>): list<dict<any>>
   return out
 enddef
 
+def ShortRemoteTarget(spec: dict<any>): string
+  var name = get(spec, 'name', '')
+  if !empty(name)
+    return name
+  endif
+  var target = substitute(get(spec, 'target', ''), '^[^@]\+@', '', '')
+  return strdisplaywidth(target) > 28
+    ? strcharpart(target, 0, 27) .. '…'
+    : target
+enddef
+
+def RemoteEntries(limit: number, letters: list<string>): list<dict<any>>
+  var out: list<dict<any>> = []
+  if limit <= 0 || exists('*g:SimpleRemoteRecentWorkspaces') != 1
+    return out
+  endif
+
+  var Provider = function('g:SimpleRemoteRecentWorkspaces')
+  var recent: any = []
+  try
+    recent = call(Provider, [limit])
+  catch
+    return out
+  endtry
+  if type(recent) != v:t_list
+    return out
+  endif
+
+  for value in recent
+    if type(value) != v:t_dict
+      continue
+    endif
+    var spec = deepcopy(value)
+    var kind = get(spec, 'kind', '')
+    var target = get(spec, 'target', '')
+    var root = get(spec, 'root', '')
+    if index(['ssh', 'docker'], kind) < 0 || empty(target) || root !~# '^/'
+      continue
+    endif
+    add(out, {
+      key: TakeKey(letters),
+      kind: 'remote',
+      label: CleanLabel(toupper(kind) .. '  ' .. ShortRemoteTarget(spec)
+        .. ' · ' .. root),
+      path: root,
+      name: get(spec, 'name', ''),
+      spec: spec,
+    })
+  endfor
+  return out
+enddef
+
 def Configured(name: string): list<dict<any>>
   var value = get(g:, name, [])
   if type(value) != v:t_list
@@ -259,6 +311,7 @@ const SPECIAL_ENTRIES = [
 # transcript.  The built-in values are the exact strings the fixed sections
 # used before they became configurable.
 const SECTION_NAMES = {
+  remote: {title: 'remote workspaces', short: 'remote', command: 'remote recent'},
   files: {title: 'recent files', short: 'recent', command: 'recent'},
   dir: {title: 'in this directory', short: 'here', command: 'recent --dir'},
   project: {title: 'in this project', short: 'project',
@@ -276,7 +329,9 @@ const SECTION_NAMES = {
 const ALWAYS_SHOWN = ['files', 'sessions', 'special']
 const FILE_SECTIONS = ['files', 'dir', 'project']
 
-const FALLBACK_LISTS = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+const FALLBACK_LISTS = [
+  {type: 'remote'}, {type: 'files'}, {type: 'sessions'}, {type: 'special'},
+]
 
 def Lists(): list<dict<any>>
   var value = get(g:, 'simplestartify_lists', [])
@@ -371,6 +426,7 @@ def Model(): dict<any>
   var used: dict<bool> = {}
   # Not capped at the nine digits any more: entries past the alphabet render
   # without a marker and are reached with the cursor or the filter.
+  var remote_limit = Count('simplestartify_remote_count', 3, 12)
   var recent_limit = Count('simplestartify_recent_count', 7, CANDIDATE_SCAN)
   var session_limit = Count('simplestartify_session_count', 4, len(SESSION_KEYS))
 
@@ -378,7 +434,9 @@ def Model(): dict<any>
   for spec in specs
     var kind: string = spec.type
     var entries: list<dict<any>> = []
-    if kind ==# 'files'
+    if kind ==# 'remote'
+      entries = RemoteEntries(SectionLimit(spec, remote_limit), letters)
+    elseif kind ==# 'files'
       entries = FileEntries(candidates, '',
         SectionLimit(spec, recent_limit), used, digits)
     elseif kind ==# 'dir'
@@ -1107,9 +1165,25 @@ def Quit()
   endif
 enddef
 
+def OpenRemoteWorkspace(spec: dict<any>)
+  if exists('*g:SimpleRemoteOpenWorkspace') != 1
+    Notify('SimpleRemote is not available', true)
+    return
+  endif
+  var Opener = function('g:SimpleRemoteOpenWorkspace')
+  try
+    silent keepalt enew
+    call(Opener, [deepcopy(spec)])
+  catch
+    Notify('remote workspace failed: ' .. v:exception, true)
+  endtry
+enddef
+
 def Run(action: dict<any>, verb: string)
   var kind = get(action, 'kind', '')
-  if kind ==# 'file'
+  if kind ==# 'remote'
+    OpenRemoteWorkspace(get(action, 'spec', {}))
+  elseif kind ==# 'file'
     OpenFile(get(action, 'path', ''), verb)
   elseif kind ==# 'bookmark'
     OpenBookmark(get(action, 'path', ''), verb)

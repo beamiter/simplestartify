@@ -49,13 +49,13 @@ enddef
 # Section types the dashboard knows how to fill.  "dir" and "project" are the
 # same recent-files list narrowed to the working directory and to its VCS
 # root, which is the one thing users of other start screens ask for most.
-const SECTION_TYPES = ['files', 'dir', 'project', 'sessions', 'bookmarks',
+const SECTION_TYPES = ['remote', 'files', 'dir', 'project', 'sessions', 'bookmarks',
   'commands', 'special']
 
 # The default deck is exactly what the dashboard drew before sections existed:
 # bookmarks and commands are empty out of the box and an empty configurable
 # section is not rendered, so no existing screen changes shape by upgrading.
-const DEFAULT_LISTS = [{type: 'files'}, {type: 'sessions'},
+const DEFAULT_LISTS = [{type: 'remote'}, {type: 'files'}, {type: 'sessions'},
   {type: 'bookmarks'}, {type: 'commands'}, {type: 'special'}]
 
 # Keys the dashboard itself owns.  An entry mapping is installed after these,
@@ -261,6 +261,7 @@ g:simplestartify_skiplist = Patterns(Legacy('skiplist', DEFAULT_SKIPLIST))
 # Nine is the digit alphabet, not the ceiling: entries past it are drawn
 # without a marker and reached with j/k or the "/" filter, so a larger list is
 # now a usable request rather than a broken one.
+g:simplestartify_remote_count = Clamp(Legacy('remote_count', 3), 3, 0, 12)
 g:simplestartify_recent_count = Clamp(Legacy('recent_count', 7), 7, 0, 50)
 g:simplestartify_session_count = Clamp(Legacy('session_count', 4), 4, 0, 13)
 g:simplestartify_session_dir = Text(
