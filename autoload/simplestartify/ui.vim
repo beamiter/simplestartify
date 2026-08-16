@@ -5,12 +5,17 @@ vim9script
 # line-to-action metadata come out.  Keeping randomness outside the renderer
 # makes every layout deterministic and straightforward to test.
 
-const STYLE_ORDER = ['minimal', 'boxed', 'centered', 'terminal']
+const STYLE_ORDER = ['minimal', 'terminal', 'blocks', 'neon', 'retro',
+  'shadow', 'heavy', 'sparkle']
 const STYLE_MIN_WIDTH = {
   minimal: 16,
-  boxed: 28,
-  centered: 24,
   terminal: 22,
+  blocks: 33,
+  neon: 25,
+  retro: 28,
+  shadow: 34,
+  heavy: 25,
+  sparkle: 24,
 }
 
 def DisplaySlice(text: string, width: number): string
@@ -51,13 +56,6 @@ def Center(text: string, width: number): string
   var fitted = Fit(text, width)
   var padding = max([0, (width - strdisplaywidth(fitted)) / 2])
   return repeat(' ', padding) .. fitted
-enddef
-
-def BoxRow(text: string, inner_width: number): string
-  var fitted = Fit(text, inner_width)
-  return '| ' .. fitted
-        \ .. repeat(' ', max([0, inner_width - strdisplaywidth(fitted)]))
-        \ .. ' |'
 enddef
 
 def Add(lines: list<string>, text: string, width: number): number
@@ -179,128 +177,6 @@ def BuildMinimal(model: dict<any>, width: number): dict<any>
   }
 enddef
 
-def AddBoxedSection(
-    lines: list<string>,
-    actions: dict<any>,
-    section_lines: list<number>,
-    entry_lines: list<number>,
-    title: string,
-    entries: list<dict<any>>,
-    inner: number,
-    width: number)
-  add(section_lines, Add(lines, BoxRow('-- ' .. toupper(title) .. ' --', inner), width))
-  if empty(entries)
-    Add(lines, BoxRow('  (none yet)', inner), width)
-  else
-    for entry in entries
-      AddAction(lines, actions, entry_lines,
-        BoxRow('  ' .. Label(entry), inner), entry, width)
-    endfor
-  endif
-enddef
-
-def BuildBoxed(model: dict<any>, width: number): dict<any>
-  var lines: list<string> = []
-  var actions: dict<any> = {}
-  var header_lines: list<number> = []
-  var section_lines: list<number> = []
-  var entry_lines: list<number> = []
-  var footer_lines: list<number> = []
-  var box_width = min([74, max([12, width])])
-  var inner = max([1, box_width - 4])
-  var edge = '+' .. repeat('-', inner + 2) .. '+'
-
-  var custom = TextLines(model, 'header')
-  add(header_lines, Add(lines, edge, width))
-  for text in empty(custom) ? ['SIMPLESTARTIFY // RANDOM DECK'] : custom
-    add(header_lines, Add(lines, BoxRow(text, inner), width))
-  endfor
-  add(header_lines, Add(lines, edge, width))
-  var first = true
-  for section in Sections(model)
-    if !first
-      Add(lines, BoxRow('', inner), width)
-    endif
-    first = false
-    AddBoxedSection(lines, actions, section_lines, entry_lines,
-      Name(section, 'short'), Entries(section), inner, width)
-  endfor
-  add(footer_lines, Add(lines, edge, width))
-  for text in TextLines(model, 'footer')
-    add(footer_lines, Add(lines, BoxRow(text, inner), width))
-  endfor
-  add(footer_lines, Add(lines, edge, width))
-
-  return {
-    lines: lines,
-    actions: actions,
-    cursor: empty(entry_lines) ? 1 : entry_lines[0],
-    header_lines: header_lines,
-    section_lines: section_lines,
-    entry_lines: entry_lines,
-    footer_lines: footer_lines,
-  }
-enddef
-
-def AddCenteredSection(
-    lines: list<string>,
-    actions: dict<any>,
-    section_lines: list<number>,
-    entry_lines: list<number>,
-    title: string,
-    entries: list<dict<any>>,
-    width: number)
-  add(section_lines, Add(lines, Center('-- ' .. title .. ' --', width), width))
-  if empty(entries)
-    Add(lines, Center('(none yet)', width), width)
-  else
-    for entry in entries
-      AddAction(lines, actions, entry_lines,
-        Center(Label(entry), width), entry, width)
-    endfor
-  endif
-  Add(lines, '', width)
-enddef
-
-def BuildCentered(model: dict<any>, width: number): dict<any>
-  var lines: list<string> = []
-  var actions: dict<any> = {}
-  var header_lines: list<number> = []
-  var section_lines: list<number> = []
-  var entry_lines: list<number> = []
-  var footer_lines: list<number> = []
-
-  var custom = TextLines(model, 'header')
-  for text in empty(custom)
-      ? [' ____  _                 _',
-         '/ ___|(_)_ __ ___  _ __ | | ___',
-         '\___ \| | ''_ ` _ \| ''_ \| |/ _ \',
-         ' ___) | | | | | | | |_) | |  __/',
-         '|____/|_|_| |_| |_| .__/|_|\___|',
-         '                  |_|  STARTIFY']
-      : custom
-    add(header_lines, Add(lines, Center(text, width), width))
-  endfor
-  Add(lines, '', width)
-  for section in Sections(model)
-    AddCenteredSection(lines, actions, section_lines, entry_lines,
-      toupper(Name(section, 'short')), Entries(section), width)
-  endfor
-  for text in TextLines(model, 'footer')
-    add(footer_lines, Add(lines, Center(text, width), width))
-  endfor
-
-  return {
-    lines: lines,
-    actions: actions,
-    cursor: empty(entry_lines) ? 1 : entry_lines[0],
-    header_lines: header_lines,
-    section_lines: section_lines,
-    entry_lines: entry_lines,
-    footer_lines: footer_lines,
-  }
-enddef
-
 def AddTerminalSection(
     lines: list<string>,
     actions: dict<any>,
@@ -358,6 +234,421 @@ def BuildTerminal(model: dict<any>, width: number): dict<any>
   }
 enddef
 
+# ─────────────────── blocks: 像素块横幅 ───────────────────
+
+# 3x5 的像素字体，只收了拼出横幅需要的那几个字母。行的尾巴交给 Fit()
+# 修剪，所以字形里的留白直接写成空格。
+const PIXEL_FONT = {
+  S: ['███', '█  ', '███', '  █', '███'],
+  T: ['███', ' █ ', ' █ ', ' █ ', ' █ '],
+  A: [' █ ', '█ █', '███', '█ █', '█ █'],
+  R: ['██ ', '█ █', '██ ', '█ █', '█ █'],
+  I: ['███', ' █ ', ' █ ', ' █ ', '███'],
+  F: ['███', '█  ', '██ ', '█  ', '█  '],
+  Y: ['█ █', '█ █', ' █ ', ' █ ', ' █ '],
+}
+
+def PixelBanner(word: string): list<string>
+  var rows = ['', '', '', '', '']
+  for letter in split(toupper(word), '\zs')
+    var glyph = get(PIXEL_FONT, letter, [])
+    if empty(glyph)
+      continue
+    endif
+    for i in range(5)
+      rows[i] ..= (empty(rows[i]) ? '' : ' ') .. glyph[i]
+    endfor
+  endfor
+  return rows
+enddef
+
+def AddBlocksSection(
+    lines: list<string>,
+    actions: dict<any>,
+    section_lines: list<number>,
+    entry_lines: list<number>,
+    title: string,
+    entries: list<dict<any>>,
+    width: number)
+  add(section_lines, Add(lines, '  ▌' .. toupper(title), width))
+  if empty(entries)
+    Add(lines, '    (none yet)', width)
+  else
+    for entry in entries
+      AddAction(lines, actions, entry_lines, '  ▪ ' .. Label(entry), entry, width)
+    endfor
+  endif
+  Add(lines, '', width)
+enddef
+
+def BuildBlocks(model: dict<any>, width: number): dict<any>
+  var lines: list<string> = []
+  var actions: dict<any> = {}
+  var header_lines: list<number> = []
+  var section_lines: list<number> = []
+  var entry_lines: list<number> = []
+  var footer_lines: list<number> = []
+
+  var custom = TextLines(model, 'header')
+  if empty(custom)
+    for art in PixelBanner('STARTIFY')
+      add(header_lines, Add(lines, Center(art, width), width))
+    endfor
+    add(header_lines, Add(lines, Center('· a small, quick way into Vim ·', width), width))
+  else
+    for text in custom
+      add(header_lines, Add(lines, Center(text, width), width))
+    endfor
+  endif
+  Add(lines, '', width)
+  for section in Sections(model)
+    AddBlocksSection(lines, actions, section_lines, entry_lines,
+      Name(section, 'short'), Entries(section), width)
+  endfor
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, '  ' .. text, width))
+  endfor
+
+  return {
+    lines: lines,
+    actions: actions,
+    cursor: empty(entry_lines) ? 1 : entry_lines[0],
+    header_lines: header_lines,
+    section_lines: section_lines,
+    entry_lines: entry_lines,
+    footer_lines: footer_lines,
+  }
+enddef
+
+# ─────────────────── neon: 双线霓虹框 ───────────────────
+
+def NeonRow(text: string, inner: number): string
+  var fitted = Fit(text, inner)
+  return '║ ' .. fitted
+        \ .. repeat(' ', max([0, inner - strdisplaywidth(fitted)]))
+        \ .. ' ║'
+enddef
+
+def BuildNeon(model: dict<any>, width: number): dict<any>
+  var lines: list<string> = []
+  var actions: dict<any> = {}
+  var header_lines: list<number> = []
+  var section_lines: list<number> = []
+  var entry_lines: list<number> = []
+  var footer_lines: list<number> = []
+  var frame = min([44, max([14, width])])
+  var inner = max([1, frame - 4])
+
+  var custom = TextLines(model, 'header')
+  add(header_lines, Add(lines, '  ╔' .. repeat('═', inner + 2) .. '╗', width))
+  if empty(custom)
+    add(header_lines, Add(lines, '  ' .. NeonRow('', inner), width))
+    add(header_lines, Add(lines,
+      '  ' .. NeonRow(Center('◈ S T A R T I F Y ◈', inner), inner), width))
+    add(header_lines, Add(lines,
+      '  ' .. NeonRow(Center('a small, quick way into Vim', inner), inner), width))
+    add(header_lines, Add(lines, '  ' .. NeonRow('', inner), width))
+  else
+    for text in custom
+      add(header_lines, Add(lines, '  ' .. NeonRow(Center(text, inner), inner), width))
+    endfor
+  endif
+  add(header_lines, Add(lines, '  ╚' .. repeat('═', inner + 2) .. '╝', width))
+  Add(lines, '', width)
+  for section in Sections(model)
+    var rule = '  ══ ' .. toupper(Name(section, 'short')) .. ' '
+    rule ..= repeat('═', max([0, min([width, 56]) - strdisplaywidth(rule)]))
+    add(section_lines, Add(lines, rule, width))
+    if empty(Entries(section))
+      Add(lines, '    (none yet)', width)
+    else
+      for entry in Entries(section)
+        AddAction(lines, actions, entry_lines, '  ▸ ' .. Label(entry), entry, width)
+      endfor
+    endif
+    Add(lines, '', width)
+  endfor
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, '  ' .. text, width))
+  endfor
+
+  return {
+    lines: lines,
+    actions: actions,
+    cursor: empty(entry_lines) ? 1 : entry_lines[0],
+    header_lines: header_lines,
+    section_lines: section_lines,
+    entry_lines: entry_lines,
+    footer_lines: footer_lines,
+  }
+enddef
+
+# ─────────────────── retro: 圆角 unicode 框 ───────────────────
+
+def RetroRow(text: string, inner: number): string
+  var fitted = Fit(text, inner)
+  return '│ ' .. fitted
+        \ .. repeat(' ', max([0, inner - strdisplaywidth(fitted)]))
+        \ .. ' │'
+enddef
+
+def AddRetroSection(
+    lines: list<string>,
+    actions: dict<any>,
+    section_lines: list<number>,
+    entry_lines: list<number>,
+    title: string,
+    entries: list<dict<any>>,
+    inner: number,
+    width: number)
+  add(section_lines, Add(lines, RetroRow('── ' .. toupper(title) .. ' ──', inner), width))
+  if empty(entries)
+    Add(lines, RetroRow('  (none yet)', inner), width)
+  else
+    for entry in entries
+      AddAction(lines, actions, entry_lines,
+        RetroRow('  ' .. Label(entry), inner), entry, width)
+    endfor
+  endif
+enddef
+
+def BuildRetro(model: dict<any>, width: number): dict<any>
+  var lines: list<string> = []
+  var actions: dict<any> = {}
+  var header_lines: list<number> = []
+  var section_lines: list<number> = []
+  var entry_lines: list<number> = []
+  var footer_lines: list<number> = []
+  var frame = min([64, max([12, width])])
+  var inner = max([1, frame - 4])
+  var top = '╭' .. repeat('─', inner + 2) .. '╮'
+  var bottom = '╰' .. repeat('─', inner + 2) .. '╯'
+
+  var custom = TextLines(model, 'header')
+  add(header_lines, Add(lines, top, width))
+  for text in empty(custom)
+      ? ['~ SimpleStartify ~', 'a small, quick way into Vim']
+      : custom
+    add(header_lines, Add(lines, RetroRow(Center(text, inner), inner), width))
+  endfor
+  add(header_lines, Add(lines, bottom, width))
+  var first = true
+  for section in Sections(model)
+    if !first
+      Add(lines, RetroRow('', inner), width)
+    endif
+    first = false
+    AddRetroSection(lines, actions, section_lines, entry_lines,
+      Name(section, 'short'), Entries(section), inner, width)
+  endfor
+  # 底框的两条边也算进 footer_lines。
+  add(footer_lines, Add(lines, bottom, width))
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, RetroRow(Center(text, inner), inner), width))
+  endfor
+  add(footer_lines, Add(lines, bottom, width))
+
+  return {
+    lines: lines,
+    actions: actions,
+    cursor: empty(entry_lines) ? 1 : entry_lines[0],
+    header_lines: header_lines,
+    section_lines: section_lines,
+    entry_lines: entry_lines,
+    footer_lines: footer_lines,
+  }
+enddef
+
+# ─────────────────── shadow: 投影像素横幅 ───────────────────
+
+# 复用 blocks 的像素字体,每个方块往右下投一格 ░ 影子,只落在空白处,
+# 横幅于是有了浮起来的立体感。
+def ShadowBanner(word: string): list<string>
+  var art = PixelBanner(word)
+  var out: list<string> = []
+  var prev = ''
+  for row in art
+    var chars = split(row, '\zs')
+    var above = split(prev, '\zs')
+    for i in range(len(above))
+      if above[i] ==# '█' && i + 1 < len(chars) && chars[i + 1] ==# ' '
+        chars[i + 1] = '░'
+      endif
+    endfor
+    add(out, join(chars, ''))
+    prev = row
+  endfor
+  add(out, ' ' .. substitute(prev, '█', '░', 'g'))
+  return out
+enddef
+
+def BuildShadow(model: dict<any>, width: number): dict<any>
+  var lines: list<string> = []
+  var actions: dict<any> = {}
+  var header_lines: list<number> = []
+  var section_lines: list<number> = []
+  var entry_lines: list<number> = []
+  var footer_lines: list<number> = []
+
+  var custom = TextLines(model, 'header')
+  if empty(custom)
+    for art in ShadowBanner('STARTIFY')
+      add(header_lines, Add(lines, Center(art, width), width))
+    endfor
+    add(header_lines, Add(lines, Center('a small, quick way into Vim', width), width))
+  else
+    for text in custom
+      add(header_lines, Add(lines, Center(text, width), width))
+    endfor
+  endif
+  Add(lines, '', width)
+  for section in Sections(model)
+    add(section_lines, Add(lines, '  ▓ ' .. toupper(Name(section, 'short')), width))
+    if empty(Entries(section))
+      Add(lines, '    (none yet)', width)
+    else
+      for entry in Entries(section)
+        AddAction(lines, actions, entry_lines,
+          '  ▒ ' .. Label(entry), entry, width)
+      endfor
+    endif
+    Add(lines, '', width)
+  endfor
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, '  ' .. text, width))
+  endfor
+
+  return {
+    lines: lines,
+    actions: actions,
+    cursor: empty(entry_lines) ? 1 : entry_lines[0],
+    header_lines: header_lines,
+    section_lines: section_lines,
+    entry_lines: entry_lines,
+    footer_lines: footer_lines,
+  }
+enddef
+
+# ─────────────────── heavy: 粗线框 ───────────────────
+
+def HeavyRow(text: string, inner: number): string
+  var fitted = Fit(text, inner)
+  return '┃ ' .. fitted
+        \ .. repeat(' ', max([0, inner - strdisplaywidth(fitted)]))
+        \ .. ' ┃'
+enddef
+
+def BuildHeavy(model: dict<any>, width: number): dict<any>
+  var lines: list<string> = []
+  var actions: dict<any> = {}
+  var header_lines: list<number> = []
+  var section_lines: list<number> = []
+  var entry_lines: list<number> = []
+  var footer_lines: list<number> = []
+  var frame = min([44, max([14, width])])
+  var inner = max([1, frame - 4])
+
+  var custom = TextLines(model, 'header')
+  add(header_lines, Add(lines, '  ┏' .. repeat('━', inner + 2) .. '┓', width))
+  if empty(custom)
+    add(header_lines, Add(lines, '  ' .. HeavyRow('', inner), width))
+    add(header_lines, Add(lines,
+      '  ' .. HeavyRow(Center('S T A R T I F Y', inner), inner), width))
+    add(header_lines, Add(lines,
+      '  ' .. HeavyRow(Center('a small, quick way into Vim', inner), inner), width))
+    add(header_lines, Add(lines, '  ' .. HeavyRow('', inner), width))
+  else
+    for text in custom
+      add(header_lines, Add(lines, '  ' .. HeavyRow(Center(text, inner), inner), width))
+    endfor
+  endif
+  add(header_lines, Add(lines, '  ┗' .. repeat('━', inner + 2) .. '┛', width))
+  Add(lines, '', width)
+  for section in Sections(model)
+    var rule = '  ━━ ' .. toupper(Name(section, 'short')) .. ' '
+    rule ..= repeat('━', max([0, min([width, 56]) - strdisplaywidth(rule)]))
+    add(section_lines, Add(lines, rule, width))
+    if empty(Entries(section))
+      Add(lines, '    (none yet)', width)
+    else
+      for entry in Entries(section)
+        AddAction(lines, actions, entry_lines,
+          '  ◆ ' .. Label(entry), entry, width)
+      endfor
+    endif
+    Add(lines, '', width)
+  endfor
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, '  ' .. text, width))
+  endfor
+
+  return {
+    lines: lines,
+    actions: actions,
+    cursor: empty(entry_lines) ? 1 : entry_lines[0],
+    header_lines: header_lines,
+    section_lines: section_lines,
+    entry_lines: entry_lines,
+    footer_lines: footer_lines,
+  }
+enddef
+
+# ─────────────────── sparkle: 星饰 ───────────────────
+
+def SparkleRule(left: string, right: string, width: number): string
+  var rule = '  ' .. left .. ' '
+  rule ..= repeat('─', max([0, min([width, 44]) - strdisplaywidth(rule)
+        \ - strdisplaywidth(right) - 1]))
+  return rule .. ' ' .. right
+enddef
+
+def BuildSparkle(model: dict<any>, width: number): dict<any>
+  var lines: list<string> = []
+  var actions: dict<any> = {}
+  var header_lines: list<number> = []
+  var section_lines: list<number> = []
+  var entry_lines: list<number> = []
+  var footer_lines: list<number> = []
+
+  var custom = TextLines(model, 'header')
+  add(header_lines, Add(lines, SparkleRule('✦', '✦', width), width))
+  if empty(custom)
+    add(header_lines, Add(lines, Center('S T A R T I F Y', width), width))
+    add(header_lines, Add(lines, Center('✧ a small, quick way into Vim ✧', width), width))
+  else
+    for text in custom
+      add(header_lines, Add(lines, Center(text, width), width))
+    endfor
+  endif
+  add(header_lines, Add(lines, SparkleRule('✧', '✧', width), width))
+  Add(lines, '', width)
+  for section in Sections(model)
+    add(section_lines, Add(lines, '  ✦ ' .. toupper(Name(section, 'short')), width))
+    if empty(Entries(section))
+      Add(lines, '    (none yet)', width)
+    else
+      for entry in Entries(section)
+        AddAction(lines, actions, entry_lines,
+          '  ⋆ ' .. Label(entry), entry, width)
+      endfor
+    endif
+    Add(lines, '', width)
+  endfor
+  for text in TextLines(model, 'footer')
+    add(footer_lines, Add(lines, '  ' .. text, width))
+  endfor
+
+  return {
+    lines: lines,
+    actions: actions,
+    cursor: empty(entry_lines) ? 1 : entry_lines[0],
+    header_lines: header_lines,
+    section_lines: section_lines,
+    entry_lines: entry_lines,
+    footer_lines: footer_lines,
+  }
+enddef
+
 export def Styles(): list<string>
   return copy(STYLE_ORDER)
 enddef
@@ -399,12 +690,20 @@ enddef
 
 export def Build(model: dict<any>, style: string, width: number): dict<any>
   var safe_width = max([1, width])
-  if style ==# 'boxed'
-    return BuildBoxed(model, safe_width)
-  elseif style ==# 'centered'
-    return BuildCentered(model, safe_width)
-  elseif style ==# 'terminal'
+  if style ==# 'terminal'
     return BuildTerminal(model, safe_width)
+  elseif style ==# 'blocks'
+    return BuildBlocks(model, safe_width)
+  elseif style ==# 'neon'
+    return BuildNeon(model, safe_width)
+  elseif style ==# 'retro'
+    return BuildRetro(model, safe_width)
+  elseif style ==# 'shadow'
+    return BuildShadow(model, safe_width)
+  elseif style ==# 'heavy'
+    return BuildHeavy(model, safe_width)
+  elseif style ==# 'sparkle'
+    return BuildSparkle(model, safe_width)
   endif
   return BuildMinimal(model, safe_width)
 enddef

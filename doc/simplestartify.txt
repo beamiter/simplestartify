@@ -27,7 +27,7 @@ CONTENTS                                             *simplestartify-contents*
 
 SimpleStartify replaces an empty Vim buffer with a dashboard of recent files,
 saved sessions and common actions.  In its default "random" mode, each entry
-to the dashboard draws one of four layouts and avoids immediately repeating
+to the dashboard draws one of eight layouts and avoids immediately repeating
 the current eligible layout.
 
 The dashboard is a scratch buffer with 'filetype' set to "startify", so rules
@@ -49,12 +49,20 @@ nothing to compile for installation.
 ==============================================================================
 3. STYLES AND RANDOM DRAWS                            *simplestartify-styles*
 
-Four layouts are built in, in this order:
+Eight layouts are built in, in this order:
 
     minimal     compact, left-aligned sections          minimum width 16
-    boxed       a framed dashboard                      minimum width 28
-    centered    centered ASCII banner and entries       minimum width 24
     terminal    a command-line transcript               minimum width 22
+    blocks      a pixel-block STARTIFY banner           minimum width 33
+    neon        a double-ruled frame with ═ section rules  minimum width 25
+    retro       a rounded unicode frame                 minimum width 28
+    shadow      the pixel banner with a drop shadow     minimum width 34
+    heavy       a heavy-ruled frame with ━ section rules   minimum width 25
+    sparkle     star-ornamented rules and entries       minimum width 24
+
+The retired names "boxed" and "centered" still work: they are answered by
+their aesthetic successors "retro" and "blocks", both in
+|g:simplestartify_style| and in the candidate list.
 
 The minimum widths are used only to form the random candidate pool.  When no
 configured style fits, "minimal" is the safe fallback.  A style explicitly
@@ -358,16 +366,18 @@ automatic opening off keeps the ordinary intro screen.  Set it explicitly to
 override either way.
 
                                                    *g:simplestartify_style*
-"random" (default), "minimal", "boxed", "centered", or "terminal".  An
-unknown string reports an error and draws a random eligible style.
+"random" (default), "minimal", "terminal", "blocks", "neon", "retro",
+"shadow", "heavy", or "sparkle".  An unknown string reports an error and
+draws a random eligible style.
 
                                                   *g:simplestartify_styles*
 Candidate styles for random mode.  Default: >
 
-    ['minimal', 'boxed', 'centered', 'terminal']
+    ['minimal', 'terminal', 'blocks', 'neon', 'retro',
+        'shadow', 'heavy', 'sparkle']
 <
 Unknown and duplicate names are discarded during startup normalization.  If
-the normalized list is empty, all four defaults are restored.  At draw time,
+the normalized list is empty, all eight defaults are restored.  At draw time,
 styles too wide for the current window (as reported by |winwidth()|) are left
 out; if that leaves no candidate, "minimal" is used.
 
@@ -388,7 +398,7 @@ whose name does not begin with a capital (|E704|), so this option could never
 hold one.  The evaluated form is the equivalent.
 
 The lines are plain text and each layout renders them in its own style -
-centered under "centered", framed under "boxed", comment-prefixed under
+centered under "blocks", framed under "retro", comment-prefixed under
 "terminal" - so a single configured header still looks like part of whichever
 layout was dealt.  Tabs and newlines inside a line are replaced by spaces, and
 the usual display-width fitting applies.  An expression that throws reports
@@ -658,7 +668,7 @@ string disables persistence in the same way as
 
                                                         *:SimpleStartify*
 :SimpleStartify [style]
-        Open the dashboard.  [style] may be "random" or one of the four names
+        Open the dashboard.  [style] may be "random" or one of the names
         in |simplestartify-styles|.  With no argument, use the configured
         style.  A modified buffer is not replaced while 'hidden' is off.
 
@@ -666,7 +676,7 @@ string disables persistence in the same way as
         its own window instead of taking over the current one: >
 
             :vertical SimpleStartify
-            :botright SimpleStartify centered
+            :botright SimpleStartify retro
             :tab SimpleStartify
 <
         "aboveleft", "belowright", "botright", "horizontal", "leftabove",
@@ -956,9 +966,13 @@ parentheses.
 
     SimpleStartifyHeader             generic header                 (Title)
     SimpleStartifyHeaderMinimal      minimal header            (Identifier)
-    SimpleStartifyHeaderBoxed        boxed header                   (Title)
-    SimpleStartifyHeaderCentered     centered header             (Constant)
     SimpleStartifyHeaderTerminal     terminal header               (String)
+    SimpleStartifyHeaderBlocks       blocks header                (Special)
+    SimpleStartifyHeaderNeon         neon header                  (PreProc)
+    SimpleStartifyHeaderRetro        retro header                    (Type)
+    SimpleStartifyHeaderShadow       shadow header               (Constant)
+    SimpleStartifyHeaderHeavy        heavy header                  (Title)
+    SimpleStartifyHeaderSparkle      sparkle header             (Delimiter)
     SimpleStartifySection            section heading            (Statement)
     SimpleStartifyEntry              selectable entry              (Normal)
     SimpleStartifyKey                [key] marker                  (Special)

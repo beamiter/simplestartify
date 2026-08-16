@@ -45,6 +45,17 @@ def Priority(type_name: string): number
   return get(prop_type_get(type_name), 'priority', 0)
 enddef
 
+const HEADER_GROUPS = {
+  minimal: 'SimpleStartifyHeaderMinimal',
+  terminal: 'SimpleStartifyHeaderTerminal',
+  blocks: 'SimpleStartifyHeaderBlocks',
+  neon: 'SimpleStartifyHeaderNeon',
+  retro: 'SimpleStartifyHeaderRetro',
+  shadow: 'SimpleStartifyHeaderShadow',
+  heavy: 'SimpleStartifyHeaderHeavy',
+  sparkle: 'SimpleStartifyHeaderSparkle',
+}
+
 for style in simplestartify#ui#Styles()
   execute 'SimpleStartify ' .. style
   var actions = b:simplestartify_actions
@@ -72,11 +83,8 @@ for style in simplestartify#ui#Styles()
 
   # Header, section and footer lines are still distinguishable, and nothing
   # leaks onto a blank line.
-  assert_false(empty(PropsAt(1, style ==# 'minimal'
-    ? 'SimpleStartifyHeaderMinimal'
-    : (style ==# 'boxed' ? 'SimpleStartifyHeaderBoxed'
-    : (style ==# 'centered' ? 'SimpleStartifyHeaderCentered'
-    : 'SimpleStartifyHeaderTerminal')))), style)
+  assert_false(empty(PropsAt(1, get(HEADER_GROUPS, style,
+    'SimpleStartifyHeader'))), style)
 endfor
 
 # The key span is nested inside the entry span, so it has to win on priority

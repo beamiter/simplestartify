@@ -278,18 +278,24 @@ def Lines(value: any): any
 enddef
 
 def StyleList(value: any): list<string>
+  const known = ['minimal', 'terminal', 'blocks', 'neon', 'retro',
+    'shadow', 'heavy', 'sparkle']
+  # 退役样式映射到接任者而不是丢弃:['boxed'] 过滤成空再退回全量默认,
+  # 等于把用户"只要这一套"的请求改成了随机全套。
+  const retired = {boxed: 'retro', centered: 'blocks'}
   if type(value) != v:t_list
-    return ['minimal', 'boxed', 'centered', 'terminal']
+    return copy(known)
   endif
   var out: list<string> = []
   for style in value
     if type(style) == v:t_string
-          \ && index(['minimal', 'boxed', 'centered', 'terminal'], style) >= 0
-          \ && index(out, style) < 0
-      add(out, style)
+      var mapped = get(retired, style, style)
+      if index(known, mapped) >= 0 && index(out, mapped) < 0
+        add(out, mapped)
+      endif
     endif
   endfor
-  return empty(out) ? ['minimal', 'boxed', 'centered', 'terminal'] : out
+  return empty(out) ? copy(known) : out
 enddef
 
 # Defaults follow the simple* convention: all configuration is normalized once
@@ -298,7 +304,8 @@ g:simplestartify_auto_open = Flag(
   Legacy('auto_open', !Flag(Legacy('disable_at_vimenter', 0), 0)), 1)
 g:simplestartify_style = Text(Legacy('style', 'random'), 'random')
 g:simplestartify_styles = StyleList(Legacy(
-  'styles', ['minimal', 'boxed', 'centered', 'terminal']))
+  'styles', ['minimal', 'terminal', 'blocks', 'neon', 'retro',
+    'shadow', 'heavy', 'sparkle']))
 g:simplestartify_avoid_repeat = Flag(Legacy('avoid_repeat', 1), 1)
 g:simplestartify_custom_header = Lines(Legacy('custom_header', []))
 g:simplestartify_custom_footer = Lines(Legacy('custom_footer', []))

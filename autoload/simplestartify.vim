@@ -16,9 +16,13 @@ const OPEN_VERBS = {
 }
 const STYLE_GROUPS = {
   minimal: 'SimpleStartifyHeaderMinimal',
-  boxed: 'SimpleStartifyHeaderBoxed',
-  centered: 'SimpleStartifyHeaderCentered',
   terminal: 'SimpleStartifyHeaderTerminal',
+  blocks: 'SimpleStartifyHeaderBlocks',
+  neon: 'SimpleStartifyHeaderNeon',
+  retro: 'SimpleStartifyHeaderRetro',
+  shadow: 'SimpleStartifyHeaderShadow',
+  heavy: 'SimpleStartifyHeaderHeavy',
+  sparkle: 'SimpleStartifyHeaderSparkle',
 }
 
 var random_state = srand()
@@ -457,11 +461,11 @@ const SPECIAL_ENTRIES = [
   {key: 'q', kind: 'quit', label: 'quit'},
 ]
 
-# Three names per section because the four layouts address the reader
-# differently: minimal spells the heading out, boxed and centered want it
-# short enough to survive a frame, and terminal pretends to be a shell
-# transcript.  The built-in values are the exact strings the fixed sections
-# used before they became configurable.
+# Three names per section because the layouts address the reader
+# differently: minimal spells the heading out, the framed and banner styles
+# want it short enough to survive a frame, and terminal pretends to be a
+# shell transcript.  The built-in values are the exact strings the fixed
+# sections used before they became configurable.
 const SECTION_NAMES = {
   remote: {title: 'remote workspaces', short: 'remote', command: 'remote recent'},
   files: {title: 'recent files', short: 'recent', command: 'recent'},
@@ -630,12 +634,17 @@ def ConfiguredStyle(): string
   return type(value) == v:t_string ? value : 'random'
 enddef
 
+# 退役样式由审美上的接任者替上:配置里还留着旧名字时不报错,直接换成
+# 继承它的那套。
+const RETIRED_STYLES = {boxed: 'retro', centered: 'blocks'}
+
 def ChooseStyle(requested: string = '', avoid: string = ''): string
   var choice = empty(requested) ? ConfiguredStyle() : requested
   var width = DashboardWidth()
   var candidates = simplestartify#ui#Candidates(
     get(g:, 'simplestartify_styles', simplestartify#ui#Styles()), width)
   if choice !=# 'random'
+    choice = get(RETIRED_STYLES, choice, choice)
     if index(simplestartify#ui#Styles(), choice) >= 0
       return choice
     endif
@@ -705,8 +714,11 @@ enddef
 const MUTED_TEXT = '(none yet)'
 
 const LINE_GROUPS = ['SimpleStartifyHeader', 'SimpleStartifyHeaderMinimal',
-  'SimpleStartifyHeaderBoxed', 'SimpleStartifyHeaderCentered',
-  'SimpleStartifyHeaderTerminal', 'SimpleStartifySection',
+  'SimpleStartifyHeaderTerminal', 'SimpleStartifyHeaderBlocks',
+  'SimpleStartifyHeaderNeon', 'SimpleStartifyHeaderRetro',
+  'SimpleStartifyHeaderShadow', 'SimpleStartifyHeaderHeavy',
+  'SimpleStartifyHeaderSparkle',
+  'SimpleStartifySection',
   'SimpleStartifyEntry', 'SimpleStartifyFooter']
 
 # Text properties are exact and cannot mis-prioritize.  The syntax approach
@@ -947,9 +959,13 @@ enddef
 export def SetupHighlights()
   highlight default link SimpleStartifyHeader Title
   highlight default link SimpleStartifyHeaderMinimal Identifier
-  highlight default link SimpleStartifyHeaderBoxed Title
-  highlight default link SimpleStartifyHeaderCentered Constant
   highlight default link SimpleStartifyHeaderTerminal String
+  highlight default link SimpleStartifyHeaderBlocks Special
+  highlight default link SimpleStartifyHeaderNeon PreProc
+  highlight default link SimpleStartifyHeaderRetro Type
+  highlight default link SimpleStartifyHeaderShadow Constant
+  highlight default link SimpleStartifyHeaderHeavy Title
+  highlight default link SimpleStartifyHeaderSparkle Delimiter
   highlight default link SimpleStartifySection Statement
   highlight default link SimpleStartifyEntry Normal
   highlight default link SimpleStartifyKey Special

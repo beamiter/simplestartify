@@ -77,7 +77,7 @@ assert_match('^ \+配置目录$', keyless[0])
 # An empty section list renders nothing selectable rather than throwing, and a
 # footer given as a bare string still renders.
 var bare = simplestartify#ui#Build({cwd: '/tmp', sections: [], footer: 'x'},
-  'boxed', 40)
+  'retro', 40)
 assert_equal({}, bare.actions)
 assert_equal(1, bare.cursor)
 assert_match('x', join(bare.lines, "\n"))
@@ -94,7 +94,7 @@ for style in simplestartify#ui#Styles()
     var rendered = join(layout.lines, "\n")
     assert_equal(9, len(layout.actions), style)
     assert_equal(2, len(layout.footer_lines)
-      + (style ==# 'boxed' ? -2 : 0), $'{style}/{width}')
+      + (style ==# 'retro' ? -2 : 0), $'{style}/{width}')
     for line_text in layout.lines
       assert_true(strdisplaywidth(line_text) <= width,
         $'{style}/{width}: {string(line_text)}')
@@ -110,12 +110,12 @@ for style in simplestartify#ui#Styles()
   endfor
 endfor
 
-var candidates = ['minimal', 'boxed', 'terminal']
-assert_equal('boxed', simplestartify#ui#PickStyle(candidates, 'minimal', 0))
+var candidates = ['minimal', 'neon', 'terminal']
+assert_equal('neon', simplestartify#ui#PickStyle(candidates, 'minimal', 0))
 assert_equal('terminal', simplestartify#ui#PickStyle(candidates, 'minimal', 1))
 assert_equal('minimal', simplestartify#ui#PickStyle(['minimal'], 'minimal', 7))
 assert_equal('minimal', simplestartify#ui#PickStyle([], '', 9))
-assert_equal(['minimal'], simplestartify#ui#Candidates(['boxed'], 20))
+assert_equal(['minimal'], simplestartify#ui#Candidates(['neon'], 20))
 assert_equal('ab…', simplestartify#ui#Fit('abcdef', 4))
 
 if !empty(v:errors)

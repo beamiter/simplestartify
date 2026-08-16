@@ -83,8 +83,9 @@ for key in live_keys
   assert_match('simplestartify#ActivateKey', maparg(key, 'n'), 'live key ' .. key)
 endfor
 
+# boxed is retired; its successor answers for it at draw time.
 SimpleStartify boxed
-assert_equal('boxed', b:simplestartify_style)
+assert_equal('retro', b:simplestartify_style)
 # Splits change winwidth without changing &columns, and the window that
 # shrinks is usually not the focused one.  Assert from the *other* window: the
 # dashboard is 'nowrap', so a missed reflow chops every line mid-glyph.

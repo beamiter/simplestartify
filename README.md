@@ -4,20 +4,27 @@ A small Vim 9 start screen that defaults to a fresh random UI on every entry.
 
 SimpleStartify turns an otherwise empty Vim into a dashboard for recent files,
 sessions, and a few common actions. The default `random` mode chooses one of
-four built-in layouts and avoids showing the same eligible layout twice in a
+eight built-in layouts and avoids showing the same eligible layout twice in a
 row. Resizing reflows the current layout instead of unexpectedly changing it.
 
 Like the rest of the `simple*` suite, it is Vim9script only: no Python, no
 daemon, no dependencies.
 
-## The four layouts
+## The eight layouts
 
 | Style | Character | Minimum width in the random pool |
 | --- | --- | ---: |
 | `minimal` | compact, left-aligned sections | 16 |
-| `boxed` | a framed dashboard | 28 |
-| `centered` | centered ASCII banner and entries | 24 |
 | `terminal` | command-line transcript | 22 |
+| `blocks` | pixel-block STARTIFY banner | 33 |
+| `neon` | double-ruled frame with ═ section rules | 25 |
+| `retro` | rounded unicode frame | 28 |
+| `shadow` | the pixel banner with a drop shadow | 34 |
+| `heavy` | heavy-ruled frame with ━ section rules | 25 |
+| `sparkle` | star-ornamented rules and entries | 24 |
+
+The retired names `boxed` and `centered` still work; they are answered by
+their successors `retro` and `blocks`.
 
 The width limits only select sensible candidates for random mode at the
 current window width. If none of the configured candidates fits, `minimal` is
@@ -50,7 +57,8 @@ Set options before the plugin loads. These are the defaults:
 let g:simplestartify_auto_open = 1
 let g:simplestartify_hide_intro = 1  " defaults to g:simplestartify_auto_open
 let g:simplestartify_style = 'random'
-let g:simplestartify_styles = ['minimal', 'boxed', 'centered', 'terminal']
+let g:simplestartify_styles = ['minimal', 'terminal', 'blocks', 'neon',
+  \ 'retro', 'shadow', 'heavy', 'sparkle']
 let g:simplestartify_avoid_repeat = 1
 let g:simplestartify_custom_header = []   " list of lines, or a string
 let g:simplestartify_custom_footer = []
@@ -89,7 +97,7 @@ let g:simplestartify_mru_file = '~/.vim/simplestartify-mru'
 `g:simplestartify_style` may be `random` or one named style.
 `g:simplestartify_styles` is the ordered candidate set used by random mode.
 Unknown and duplicate candidates are removed; an empty result restores all
-four defaults. With more than one eligible style,
+eight defaults. With more than one eligible style,
 `g:simplestartify_avoid_repeat` removes the current style before the next draw.
 
 `g:simplestartify_custom_header` and `g:simplestartify_custom_footer` replace
@@ -279,7 +287,7 @@ the split verbs because loading one replaces the whole layout, and `s`, `t`
 and `v` are never used as session shortcuts.
 
 The dashboard itself takes a window-placement modifier, so
-`:vertical SimpleStartify`, `:botright SimpleStartify centered` and
+`:vertical SimpleStartify`, `:botright SimpleStartify retro` and
 `:tab SimpleStartify` put it beside your work instead of over it. Modifiers
 that are not about placement are ignored rather than passed on: `noautocmd`
 would suppress the `FileType` event the dashboard is set up by. `q` in such a

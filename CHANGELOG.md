@@ -4,6 +4,17 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- Six new dashboard layouts join the random deck: `blocks` draws the banner
+  in a pixel-block font, `shadow` gives that banner a drop shadow, `neon`
+  frames it in double rules and `heavy` in heavy ones, `retro` rounds the
+  frame off with unicode corners, and `sparkle` trades frames for star
+  ornaments. Each has its own header highlight group and a minimum width for
+  the random candidate pool, and all six honour
+  `g:simplestartify_custom_header` in their own house style.
+- Retired `boxed` and `centered`; their seats are taken by `retro` and
+  `blocks`. Configurations still naming them are not errors: the retired
+  names map to their successors, in `g:simplestartify_style` at draw time and
+  in `g:simplestartify_styles` during startup normalization.
 - The `remote` section now lists SimpleRemote's configured profiles as well as
   its recent workspaces, and marks the one that is connected. A profile is
   configuration rather than history, so `g:simplestartify_remote_count` caps

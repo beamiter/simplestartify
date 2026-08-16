@@ -79,8 +79,11 @@ g:startify_disable_at_vimenter = 1
 Load()
 
 assert_equal(TEMP .. '/sessions', g:simplestartify_session_dir)
+# The style string crosses verbatim and is mapped to its successor at draw
+# time; in the candidate list the retired name is mapped right away, since
+# filtering it out would silently restore every default.
 assert_equal('boxed', g:simplestartify_style)
-assert_equal(['minimal', 'boxed'], g:simplestartify_styles)
+assert_equal(['minimal', 'retro'], g:simplestartify_styles)
 assert_equal(0, g:simplestartify_avoid_repeat)
 assert_equal(['OLD BANNER'], g:simplestartify_custom_header)
 assert_equal('old footer', g:simplestartify_custom_footer)
