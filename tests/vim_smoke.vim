@@ -187,6 +187,23 @@ enew!
 simplestartify#AutoOpen()
 assert_equal('startify', &filetype)
 
+# The draw clears the buffer through :execute, and a range there needs its
+# colon under Vim9 rules.  Without it every single draw throws E1050 behind
+# the :silent! - invisible on screen, loud in 'verbosefile', and the clear it
+# hides never runs at all.
+enew!
+v:errmsg = ''
+SimpleStartify minimal
+assert_equal('', v:errmsg)
+assert_equal('startify', &filetype)
+v:errmsg = ''
+SimpleStartifyRefresh
+assert_equal('', v:errmsg)
+v:errmsg = ''
+SimpleStartifyHealth
+assert_equal('', v:errmsg)
+bwipeout!
+
 var health = simplestartify#Health()
 assert_true(has_key(health, 'styles'))
 

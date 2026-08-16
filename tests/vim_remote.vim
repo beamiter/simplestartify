@@ -116,6 +116,10 @@ def DashboardWindows(): number
     (_, info) => getbufvar(info.bufnr, 'simplestartify', 0) == 1))
 enddef
 
+def WindowBuffers(): list<string>
+  return mapnew(getwininfo(), (_, info) => bufname(info.bufnr))
+enddef
+
 # Normalization: the explicit bookmark form keeps its workspace only when the
 # workspace can be reconnected, and SimpleRemote's session provider is the
 # default without anyone configuring it.
@@ -440,6 +444,32 @@ opened = len(g:remote_opened)
 simplestartify#ActivateKey('w')
 assert_equal(opened + 1, len(g:remote_opened))
 assert_equal('devbox', g:remote_opened[-1].target)
+unlet g:simpleremote_workspace
+
+# The window the verb opened for a deferred bookmark can be gone by the time
+# the connection lands - the user closed it and moved on.  The file still
+# arrives, in a window of its own: whatever they opened meanwhile stays where
+# it is instead of being edited over.
+SimpleStartify minimal
+var before_windows = winnr('$')
+simplestartify#ActivateKey('w', 'split')
+assert_equal(before_windows + 1, winnr('$'))
+close
+assert_equal(before_windows, winnr('$'))
+execute 'edit! ' .. fnameescape(LOCAL)
+assert_equal(LOCAL, expand('%:p'))
+g:simpleremote_workspace = {id: 8, kind: 'ssh', target: 'devbox', root: '/srv/app',
+  mode: 'virtual', local_root: ''}
+doautocmd <nomodeline> User SimpleRemoteConnected
+assert_true(WaitFor(() => bufname() ==# 'remote:///srv/app/README.md'), bufname())
+assert_equal(before_windows + 1, winnr('$'))
+assert_true(index(WindowBuffers(), LOCAL) >= 0, string(WindowBuffers()))
+assert_match('was closed; opening it in a split', execute('messages'))
+if winnr('$') > before_windows
+  close
+endif
+execute 'edit! ' .. fnameescape(LOCAL)
+assert_equal(LOCAL, expand('%:p'))
 unlet g:simpleremote_workspace
 
 # A SimpleRemote too old to have the profile function: the section is drawn

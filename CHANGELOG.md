@@ -24,6 +24,18 @@ All notable changes to SimpleStartify are documented here.
   mounted -- and otherwise connects that workspace first and opens the file
   once SimpleRemote reports it ready. A dictionary carrying any member besides
   those three is still vim-startify's key-to-path form.
+- A remote bookmark whose deferred edit outlived its window no longer takes
+  over an unrelated one. The split or tab verb is spent when the bookmark is
+  activated, and the file goes into that window when the connection is ready;
+  if the user closed it and moved on meanwhile, the file now arrives in a
+  window of its own, with a message saying so, instead of replacing whatever
+  they opened in the interval.
+- Fixed the buffer clear behind every draw and every `:SimpleStartifyHealth`
+  report: `:execute 'keepjumps %delete _'` needs its colon before the range
+  under Vim9 rules, so the clear had been throwing `E1050` behind a `:silent!`
+  and never running. The drawn dashboard was correct anyway -- the trailing
+  delete cleans up what the clear should have -- but every draw set
+  `v:errmsg` and logged the error to any `'verbosefile'`.
 - Added `g:simplestartify_session_line_providers`: global functions asked for
   extra session lines at every save, written after
   `g:simplestartify_session_savevars` and before

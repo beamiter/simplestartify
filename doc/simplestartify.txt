@@ -286,7 +286,10 @@ Opening one of these:
       connects that workspace first and opens the file as soon as
       SimpleRemote reports it ready.  The split or tab verb is spent
       immediately, on leaving the dashboard, so the file lands in the window
-      that was asked for even though the edit itself happens later;
+      that was asked for even though the edit itself happens later.  If that
+      window is gone when the connection arrives - closed while the connect
+      was still running - the file opens in a split of its own and says so,
+      rather than replacing whatever was opened in the meantime;
     - with no workspace named and nothing connected, reports that a workspace
       has to be connected first.
 

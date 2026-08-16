@@ -901,7 +901,7 @@ def Layout(style: string, selected_key: string = '')
     extend(Filtered(model, query), {footer: FooterLines(query, width)}),
     style, width)
   setlocal modifiable
-  silent! execute 'keepjumps %delete _'
+  silent! execute 'keepjumps :%delete _'
   var lines = get(layout, 'lines', [''])
   if empty(lines)
     lines = ['']
@@ -1380,11 +1380,21 @@ enddef
 # Open a remote path in the connected workspace: the local projection when
 # the workspace has one (an sshfs or bind mount, so the buffer is the same
 # file the tree would open), the remote:// buffer otherwise.  {winid} is the
-# window the user was in when the connection was asked for; if it is gone the
-# current one serves.
+# window the verb already opened for a connection that had to be waited for.
 def EditRemotePath(remote: string, verb: string, winid: number = 0)
-  if winid > 0 && win_id2win(winid) > 0
-    win_gotoid(winid)
+  var open_verb = verb
+  if winid > 0
+    if win_id2win(winid) > 0
+      win_gotoid(winid)
+    else
+      # The window this file was promised to is gone: the user closed it and
+      # moved on while the connection was still being made, so whatever is in
+      # the current window now is something they picked afterwards.  The file
+      # still arrives - in a window of its own, not over that one.
+      open_verb = 'split'
+      Notify('the window for remote://' .. remote
+        .. ' was closed; opening it in a split')
+    endif
   endif
   var target = 'remote://' .. remote
   if exists('*g:SimpleRemoteLocalPath') == 1
@@ -1399,7 +1409,7 @@ def EditRemotePath(remote: string, verb: string, winid: number = 0)
     endif
   endif
   try
-    execute OPEN_VERBS[verb].file .. ' ' .. fnameescape(target)
+    execute OPEN_VERBS[open_verb].file .. ' ' .. fnameescape(target)
   catch
     Notify('cannot open ' .. target .. ': ' .. v:exception, true)
   endtry
@@ -1884,7 +1894,7 @@ export def HealthReport()
   silent! file [SimpleStartifyHealth]
   setlocal buftype=nofile bufhidden=wipe nobuflisted noswapfile nowrap
   setlocal modifiable
-  silent! execute 'keepjumps %delete _'
+  silent! execute 'keepjumps :%delete _'
   setline(1, lines)
   setlocal nomodifiable nomodified
   &l:filetype = 'simplestartifyhealth'

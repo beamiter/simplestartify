@@ -216,7 +216,9 @@ marker keeps up; a connection never opens a dashboard nobody asked for.
 A bookmark whose path starts with `remote://` is a path inside a workspace and
 is kept as written instead of being expanded against the working directory. It
 may name the workspace it belongs to, and is then opened by connecting first
-and editing the file once the workspace is ready:
+and editing the file once the workspace is ready -- into the window the split
+or tab verb opened for it, or into a split of its own if that window was
+closed while the connection was still being made:
 
 ```vim
 let g:simplestartify_bookmarks = [
