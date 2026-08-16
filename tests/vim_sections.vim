@@ -349,6 +349,73 @@ assert_match('SIMPLESTARTIFY', join(getline(1, '$'), "\n"))
 g:simplestartify_custom_header = []
 g:simplestartify_custom_footer = []
 
+# The recent-files scan is bounded on both sides.  Its limit used to count only
+# the paths it accepted, so every candidate that no longer exists - a file
+# deleted since it was recorded, a checkout that moved, an unmounted drive -
+# paid a fnamemodify, the skiplist regexes and a stat and then cost nothing
+# against the budget.  A v:oldfiles that has been accumulating for years is
+# mostly such paths, and stat'ing thousands of them is a visibly frozen editor
+# at every `vim` on a network home.  Rejects have a budget of their own now,
+# and its price is spelled out here rather than left to be discovered: a live
+# file behind a few hundred dead paths is still found, and a live file behind
+# more dead paths than the scan will look at is not.
+const LATE = TEMP .. '/project/late.txt'
+writefile(['x'], LATE)
+var dead: list<string> = []
+for index in range(500)
+  add(dead, TEMP .. '/gone/missing-' .. index .. '.txt')
+endfor
+
+g:simplestartify_lists = [{type: 'files'}]
+v:oldfiles = dead[0 : 299] + [LATE]
+SimpleStartify minimal
+assert_true(index(Paths('files'), LATE) >= 0)
+
+v:oldfiles = dead + [LATE]
+SimpleStartify minimal
+assert_equal(-1, index(Paths('files'), LATE))
+
+# A path is remembered the moment it has been judged, not once it is accepted:
+# the record and v:oldfiles overlap heavily, and a repeat that was stat'ed
+# again would cost a second syscall and spend budget a fresh candidate needs.
+# Four hundred entries naming two hundred paths must still leave room to reach
+# what is behind them.
+v:oldfiles = dead[0 : 199] + dead[0 : 199] + [LATE]
+SimpleStartify minimal
+assert_true(index(Paths('files'), LATE) >= 0)
+
+# A skiplist match spends the same budget as a path that no longer exists, and
+# the documentation says so because it is not obvious: the two regexes are the
+# most expensive part of judging a candidate - more than the stat on a warm
+# disk - so exempting them would leave the scan unbounded for exactly the user
+# who asked for a broad pattern.  The price is the same as for dead paths and
+# is pinned here so it cannot change without someone noticing.
+#
+# These files are really created, and the second of a second that costs is the
+# point of the test: paths that do not exist would be rejected by the stat
+# whether the skiplist counted them or not, so only a *readable* file proves
+# that being skipped is itself what spends the budget.
+mkdir(TEMP .. '/vendor', 'p')
+var vendored: list<string> = []
+for index in range(420)
+  var path = TEMP .. '/vendor/pkg-' .. index .. '.txt'
+  writefile(['x'], path)
+  add(vendored, path)
+endfor
+g:simplestartify_skiplist = ['/vendor/pkg-']
+
+v:oldfiles = vendored[0 : 299] + [LATE]
+SimpleStartify minimal
+assert_true(index(Paths('files'), LATE) >= 0)
+
+v:oldfiles = vendored + [LATE]
+SimpleStartify minimal
+assert_equal(-1, index(Paths('files'), LATE))
+
+g:simplestartify_skiplist = []
+v:oldfiles = []
+g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

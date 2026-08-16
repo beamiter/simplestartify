@@ -34,6 +34,38 @@ assert_equal(session_path, v:this_session)
 assert_equal(['work'], simplestartify#session#List())
 assert_false(simplestartify#session#Save(false, 'work'))
 
+# :SSave, :SLoad and :SDelete all complete from List(), so every <Tab> used to
+# glob the session directory and stat every file in it - 3.8 ms per keypress at
+# 500 sessions, and far worse on a network home.  The answer is now reused
+# until the directory itself changes, which is what these assertions defend:
+# the reused answer has to be a copy, because Complete() filters the list it is
+# handed and would otherwise delete every non-matching name from the cache; and
+# a session created or deleted has to be visible to the very next completion.
+#
+# The scan deliberately refuses to remember an answer whose directory
+# timestamp is from the current second - directory mtimes have one-second
+# resolution, so a second write inside that second would leave the stored
+# timestamp equal and unnoticed - and the wait is what puts the assertions
+# below on the reusing path at all instead of measuring the fresh one twice.
+sleep 1100m
+assert_equal(['work'], simplestartify#session#Complete('wor', '', 0))
+assert_equal([], simplestartify#session#Complete('zzz', '', 0))
+assert_equal(['work'], simplestartify#session#Complete('wor', '', 0))
+assert_equal(['work'], simplestartify#session#List())
+
+writefile(['" fresh'], TEMP .. '/sessions/zzz-fresh')
+assert_equal(['zzz-fresh'], simplestartify#session#Complete('zzz', '', 0))
+delete(TEMP .. '/sessions/zzz-fresh')
+assert_equal([], simplestartify#session#Complete('zzz', '', 0))
+
+# A directory has a perfectly good modification time of its own, so "the
+# timestamp says it exists" is not the same question as "this is a session":
+# one pass over the directory still has to ask what the entry is, not only when
+# it changed.
+mkdir(TEMP .. '/sessions/notes', 'p')
+assert_equal(['work'], simplestartify#session#List())
+delete(TEMP .. '/sessions/notes', 'd')
+
 var marker_session = TEMP .. '/sessions/marker'
 writefile(['let g:simplestartify_test_session_loaded = 1'], marker_session)
 writefile(['legacy'], TEMP .. '/sessions/__LAST__')

@@ -165,6 +165,46 @@ All notable changes to SimpleStartify are documented here.
   the machine under world-writable `/dev/shm` or `/var/tmp` can no longer
   redirect the fixture into a directory of their choosing. `make check` gained
   a `test-fixture` target covering both.
+- Fixed the entire recent-file history being lost whenever Vim did not reach
+  `VimLeavePre`. `SIGKILL`, the OOM killer, `pkill vim`, a stopped container
+  or a flat battery wrote nothing at all, which is precisely the case a record
+  independent of `v:oldfiles` exists for. Recording a file now arms a
+  five-second flush window and the timer writes the cache mid-session. The
+  window is not restarted by later files, so a busy session cannot postpone
+  the write indefinitely; a failed write is not retried until the next file is
+  recorded, so a read-only home cannot turn into a doomed rewrite every few
+  seconds; and `VimLeavePre` still makes the final attempt, still without
+  being able to cost the user their quit. The dashboard also re-reads the
+  cache when it draws, so a second Vim's files now appear in a Vim that has
+  been open for hours instead of only in the next one to start.
+- Fixed the recent-file scan at `VimEnter` being bounded only on the accept
+  side. Every candidate that no longer existed paid a `fnamemodify`, the
+  skiplist regexes and a `stat` without spending any of the hundred-path
+  budget, so a `v:oldfiles` that had been accumulating for years was walked in
+  full: 4096 dead paths measured 13 ms of frozen editor on a warm local disk,
+  and a network or FUSE home at a millisecond per `stat` makes that seconds on
+  every `vim`. Rejects have a budget of their own now -- the search gives up
+  after four hundred recorded paths that no longer exist or that
+  `g:simplestartify_skiplist` matches, both of which cost the work the budget
+  bounds -- and a path that has been judged once is not stat'ed again when the
+  record and `v:oldfiles` both name it.
+- Fixed session-name completion re-globbing and re-stat'ing the whole session
+  directory on every `<Tab>`. `:SSave`, `:SLoad` and `:SDelete` all complete
+  from the same listing, which measured 3.8 ms per keypress at 500 sessions;
+  it is now reused until the session directory's own modification time
+  changes, and a scan that raced the clock within a second of a write is used
+  and thrown away rather than remembered, so a session written a moment ago is
+  never missing from the next completion.
+- Fixed `g:simplestartify_mru_max` values above 4096 being unattainable and
+  lossy. The cap was normalized into 0..5000 while the cache was read 4096
+  lines at a time, and since each write rewrites whatever the read returned,
+  the tail past 4096 was destroyed on the way out rather than merely ignored.
+  The read now follows the cap, and the 5000 ceiling is enforced on both sides
+  for a value assigned after startup.
+- `BufWinEnter` and `BufWritePost` no longer build a throwaway copy of every
+  path in the record to find one of them, which cost 0.96 ms per opened file
+  at a cap of 4096 -- on every quickfix jump. A plain scan is 3 to 7 times
+  quicker at a raised cap and free for a file at the front of the record.
 
 ## 0.1.0 - 2026-08-07
 

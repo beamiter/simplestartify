@@ -241,9 +241,17 @@ afterwards, so a dashboard reopened by `:SClose` would otherwise list only
 files from earlier sessions, and a Vim started with `-i NONE` or an empty
 `viminfo` would list nothing at all. The in-session record is kept in memory
 and, unless `g:simplestartify_mru_persist` is 0, written to
-`g:simplestartify_mru_file` at `VimLeavePre`. It is a cache: deleting it costs
-history and nothing else. Missing files and duplicate absolute paths are
-skipped. Sessions are ordered newest first.
+`g:simplestartify_mru_file` at `VimLeavePre` and five seconds after the first
+file recorded since the last write -- a Vim killed with `SIGKILL`, stopped
+with its container or out of battery never reaches `VimLeavePre`, and losing
+the whole session's history to that is the one thing this record exists to
+prevent. Every write re-reads the file first, so a second Vim's work is merged
+rather than overwritten. It is a cache: deleting it costs history and nothing
+else. Missing files and duplicate absolute paths are skipped, and the search
+gives up after four hundred recorded paths it rejects -- one that no longer
+exists, or one that `g:simplestartify_skiplist` matches -- so a record full of
+files that have been deleted cannot stall startup. Sessions are ordered newest
+first.
 
 ## Commands
 

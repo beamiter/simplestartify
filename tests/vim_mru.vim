@@ -89,11 +89,8 @@ assert_true(simplestartify#mru#Save())
 assert_equal([GAMMA, ALPHA], simplestartify#mru#List())
 
 # A corrupt or hand-edited cache degrades to "fewer entries", never an error.
-# This has to go through Save(), which re-reads the file: List() memoises the
-# first Load() and would never open the cache again, so asserting on it here
-# would compare the in-memory list against itself and pass no matter what the
-# parser did.  The four malformed lines are dropped and the one valid line is
-# merged in, which is only observable if FromDisk() actually ran.
+# The four malformed lines are dropped and the one valid line is merged in,
+# which is only observable if FromDisk() actually ran.
 g:simplestartify_mru_max = 200
 writefile(['nonsense', "0\t" .. GAMMA, "12\trelative/path", "\tleading tab",
   (localtime() - 3600) .. "\t" .. DELTA], CACHE)
@@ -139,6 +136,87 @@ execute 'edit ' .. fnameescape(GAMMA)
 assert_equal([GAMMA, BETA], simplestartify#mru#List())
 assert_true(simplestartify#mru#Save())
 assert_equal(2, len(readfile(CACHE)))
+g:simplestartify_mru_max = 200
+
+# A sibling Vim's work has to reach this Vim's dashboard while both are still
+# running.  The record used to be read exactly once per session, so a list
+# drawn hours later was still the list read at startup and a second Vim might
+# as well not have existed; now that every Vim flushes its own record on a
+# timer there is something to see, and the draw looks again.
+writefile(readfile(CACHE) + [(localtime() + 120) .. "\t" .. DELTA], CACHE)
+assert_equal([DELTA, GAMMA, BETA], simplestartify#mru#List())
+
+# The record used to be written in exactly one place, at VimLeavePre, so a Vim
+# that never got there - SIGKILL, the OOM killer, a container torn down, a flat
+# battery - took every file it had opened with it.  Recording a file now arms a
+# flush window, and the flush writes the cache with no quit in sight.  Timers
+# never fire under `-es`, which never reaches the main loop, so the callback is
+# called here exactly as the timer would have called it.
+assert_equal([], timer_info())
+delete(CACHE)
+execute 'edit ' .. fnameescape(ALPHA)
+assert_equal(1, len(timer_info()))
+# One window, not one per file: re-arming on every recorded file would let a
+# busy session postpone the write for as long as it kept opening things.
+execute 'edit ' .. fnameescape(BETA)
+assert_equal(1, len(timer_info()))
+assert_true(simplestartify#mru#Flush())
+assert_equal([], timer_info())
+assert_match('\t' .. escape(BETA, '\.'), join(readfile(CACHE), "\n"))
+
+# A flush with nothing to write is not a write.  Without that gate every armed
+# window would rewrite the whole file, and a cache another Vim had just written
+# would be replaced by an identical rewrite for no reason at all.
+writefile(['written by someone else'], CACHE)
+assert_true(simplestartify#mru#Flush())
+assert_equal(['written by someone else'], readfile(CACHE))
+
+# A cache is never worth aborting a quit, and a write that cannot succeed must
+# not leave the flag set either: it would re-arm on every file opened for the
+# rest of the session, so a read-only home would mean a doomed rewrite every
+# few seconds forever.
+g:simplestartify_mru_file = TEMP .. '/state/not-a-file'
+mkdir(TEMP .. '/state/not-a-file', 'p')
+execute 'edit ' .. fnameescape(GAMMA)
+assert_equal(1, len(timer_info()))
+assert_false(simplestartify#mru#Save())
+assert_equal([], timer_info())
+assert_true(simplestartify#mru#Flush())
+assert_equal([], timer_info())
+g:simplestartify_mru_file = CACHE
+
+# The cache is read to the cap, and the two files that state a cap agree on it.
+# plugin/ clamps g:simplestartify_mru_max into 0..5000 while the read stopped
+# at 4096 lines, so every value in 4097..5000 was unreachable - and, because
+# Save() rewrites whatever the read returned, the tail past 4096 was destroyed
+# on the way out rather than merely ignored.
+g:simplestartify_mru_max = 0
+assert_equal([], simplestartify#mru#List())
+g:simplestartify_mru_max = 4500
+var stamp = localtime()
+var many: list<string> = []
+for index in range(4500)
+  add(many, (stamp - index) .. "\t" .. TEMP .. '/deep/file-' .. index .. '.txt')
+endfor
+writefile(many, CACHE)
+assert_equal(4500, simplestartify#mru#Count())
+assert_equal(TEMP .. '/deep/file-4499.txt', simplestartify#mru#List()[-1])
+assert_true(simplestartify#mru#Save())
+assert_equal(4500, len(readfile(CACHE)))
+
+# And the ceiling is the same 5000 on both sides.  A value assigned after
+# startup never passes through plugin/, so this file has to hold the line on
+# its own rather than trusting that someone else already clamped it - and an
+# unbounded read of a cache this large is exactly what the old fixed limit was
+# there to prevent.
+g:simplestartify_mru_max = 0
+assert_equal([], simplestartify#mru#List())
+g:simplestartify_mru_max = 9000
+for index in range(4500, 5099)
+  add(many, (stamp - index) .. "\t" .. TEMP .. '/deep/file-' .. index .. '.txt')
+endfor
+writefile(many, CACHE)
+assert_equal(5000, simplestartify#mru#Count())
 g:simplestartify_mru_max = 200
 
 execute 'lcd ' .. fnameescape(ROOT)

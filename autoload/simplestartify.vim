@@ -77,6 +77,18 @@ enddef
 # limit itself.
 const CANDIDATE_SCAN = 100
 
+# That bound counts accepted paths, which is only the useful half of the work.
+# A candidate rejected by filereadable() - a file deleted since it was recorded,
+# a checkout that moved, an unmounted drive - paid a fnamemodify, the skiplist
+# regexes and a stat, then `continue`d without spending any budget at all, so a
+# record full of dead paths was walked to the very end at VimEnter.  That is
+# the normal state of a v:oldfiles which has been accumulating for years: 4096
+# dead entries measured 13 ms of frozen editor on a warm local disk here, and
+# on a network or FUSE home at a millisecond per stat it is seconds.  Rejects
+# get a budget of their own, generous enough that a mostly-live record is still
+# read to the end and small enough that a mostly-dead one is cheap.
+const CANDIDATE_REJECT = 4 * CANDIDATE_SCAN
+
 def RecentCandidates(): list<string>
   var out: list<string> = []
   var seen: dict<bool> = {}
@@ -87,16 +99,27 @@ def RecentCandidates(): list<string>
   if exists('v:oldfiles') && type(v:oldfiles) == v:t_list
     extend(candidates, v:oldfiles)
   endif
+  var rejected = 0
   for candidate in candidates
     if type(candidate) != v:t_string || empty(candidate)
       continue
     endif
     var path = fnamemodify(candidate, ':p')
-    if has_key(seen, path) || simplestartify#mru#Skipped(path)
-          \ || !filereadable(path)
+    # Marked before the verdict, not after it: the two lists overlap heavily -
+    # the same file is usually in both - so remembering that a path has been
+    # judged means a rejected one is never stat'ed a second time, and that a
+    # repeat cannot spend budget a fresh candidate needs.
+    if has_key(seen, path)
       continue
     endif
     seen[path] = true
+    if simplestartify#mru#Skipped(path) || !filereadable(path)
+      rejected += 1
+      if rejected >= CANDIDATE_REJECT
+        break
+      endif
+      continue
+    endif
     add(out, path)
     if len(out) >= CANDIDATE_SCAN
       break

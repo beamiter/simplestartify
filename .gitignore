@@ -3,3 +3,6 @@ doc/tags
 *.swp
 *.swo
 .DS_Store
+
+# Written by tests/defcompile.vim when a script fails to compile.
+tests/defcompile-errors.log
