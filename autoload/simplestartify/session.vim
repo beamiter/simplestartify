@@ -318,6 +318,39 @@ enddef
 const SAVEABLE_TYPES = [v:t_number, v:t_string, v:t_list, v:t_dict,
   v:t_bool, v:t_float, v:t_none]
 
+# Lines another plugin wants in the session file, asked for at every save.
+# The provider is a global function name; one that is not defined in this Vim
+# is skipped without a word, which is what lets SimpleRemote's be the default
+# in a Vim that does not have SimpleRemote.  One that throws or returns
+# something other than a list of strings costs a message, never the save: a
+# session missing one plugin's line is worth more than no session.
+def ProviderLines(): list<string>
+  var out: list<string> = []
+  for name in Strings('simplestartify_session_line_providers')
+    if name !~# '^g:[A-Za-z_][A-Za-z0-9_]*$' || exists('*' .. name) != 1
+      continue
+    endif
+    var lines: any = []
+    try
+      lines = call(function(name), [])
+    catch
+      Notify('session line provider ' .. name .. ' failed: ' .. v:exception, true)
+      continue
+    endtry
+    if type(lines) != v:t_list
+      Notify('session line provider ' .. name .. ' did not return a list', true)
+      continue
+    endif
+    for line in lines
+      if type(line) == v:t_string
+        # One item is one line; an embedded newline would be written as NUL.
+        extend(out, split(line, "\n"))
+      endif
+    endfor
+  endfor
+  return out
+enddef
+
 def ExtraLines(): list<string>
   var out: list<string> = []
   for name in Strings('simplestartify_session_savevars')
@@ -330,6 +363,9 @@ def ExtraLines(): list<string>
     endif
     add(out, printf('let %s = %s', name, string(get(g:, key))))
   endfor
+  # Variables, then what the providers add, then the user's own commands, so
+  # a savecmd can rely on everything the two lists before it restored.
+  extend(out, ProviderLines())
   extend(out, Strings('simplestartify_session_savecmds'))
   return out
 enddef
@@ -512,9 +548,6 @@ def SourceSession(path: string, name: string, bang: bool): bool
     if fnamemodify(path, ':h') ==# Dir()
       RecordLast(name)
     endif
-    silent! doautocmd <nomodeline> User SimpleStartifySessionLoaded
-    EmitUser('SimpleStartifySessionLoadPost')
-    return true
   catch
     var failure = v:exception
     try
@@ -529,7 +562,20 @@ def SourceSession(path: string, name: string, bang: bool): bool
   finally
     delete(rollback)
   endtry
-  return false
+  # The load is final here.  The listeners run outside the try above so a
+  # hook that throws - SimpleRemote reconnecting the session's workspace,
+  # anything a user registered - is reported, not turned into a rollback of a
+  # session that was sourced whole.  A rolled-back load fires neither event:
+  # what is on screen is the previous layout, and telling a listener the
+  # session it wanted to act on has arrived would be a lie.
+  for event in ['SimpleStartifySessionLoaded', 'SimpleStartifySessionLoadPost']
+    try
+      execute 'silent! doautocmd <nomodeline> User ' .. event
+    catch
+      Notify('session load hook failed: ' .. v:exception, true)
+    endtry
+  endfor
+  return true
 enddef
 
 var autoloading = false

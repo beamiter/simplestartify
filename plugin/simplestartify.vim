@@ -128,6 +128,49 @@ def Lists(value: any): list<dict<any>>
   return empty(out) ? deepcopy(DEFAULT_LISTS) : out
 enddef
 
+# The SimpleRemote workspace a remote bookmark belongs to: kind, target and
+# an absolute root, which is what g:SimpleRemoteOpenWorkspace() needs to bring
+# it back.  Anything less is dropped - the bookmark is still listed and opens
+# whenever a workspace is connected - rather than kept as a spec that would
+# fail at the moment the user presses the key.
+def Workspace(value: any): dict<any>
+  if type(value) != v:t_dict
+    return {}
+  endif
+  var kind = get(value, 'kind', '')
+  var target = get(value, 'target', '')
+  var root = get(value, 'root', '')
+  if type(kind) != v:t_string || empty(kind)
+        \ || type(target) != v:t_string || empty(target)
+        \ || type(root) != v:t_string || root !~# '^/'
+    return {}
+  endif
+  var out = {kind: kind, target: target, root: root}
+  var name = get(value, 'name', '')
+  if type(name) == v:t_string && !empty(name)
+    out.name = name
+  endif
+  return out
+enddef
+
+# The explicit bookmark form is {path, key?, workspace?} and nothing else: a
+# dictionary carrying any other member is vim-startify's {key: path} pair
+# form, which may well use "path" as one of its keys, and that form keeps
+# working exactly as it did.
+const BOOKMARK_MEMBERS = ['path', 'key', 'workspace']
+
+def IsBookmarkEntry(item: dict<any>): bool
+  if type(get(item, 'path', 0)) != v:t_string || empty(get(item, 'path', ''))
+    return false
+  endif
+  for member in keys(item)
+    if index(BOOKMARK_MEMBERS, member) < 0
+      return false
+    endif
+  endfor
+  return true
+enddef
+
 def Bookmarks(value: any): list<dict<any>>
   if type(value) != v:t_list
     return []
@@ -136,6 +179,13 @@ def Bookmarks(value: any): list<dict<any>>
   for item in value
     if type(item) == v:t_string && !empty(item)
       add(out, {key: '', path: item})
+    elseif type(item) == v:t_dict && IsBookmarkEntry(item)
+      var entry = {key: EntryKey(get(item, 'key', '')), path: item.path}
+      var workspace = Workspace(get(item, 'workspace', {}))
+      if !empty(workspace)
+        entry.workspace = workspace
+      endif
+      add(out, entry)
     elseif type(item) == v:t_dict
       for [key, target] in items(item)
         if type(target) == v:t_string && !empty(target)
@@ -288,6 +338,12 @@ enddef
 
 g:simplestartify_session_savevars = Names(Legacy('session_savevars', []))
 g:simplestartify_session_savecmds = Strings(Legacy('session_savecmds', []))
+# Functions asked for extra session lines at every save.  SimpleRemote's is
+# the default so a remote workspace comes back with its session out of the
+# box; it is looked up when a session is written, so a Vim without SimpleRemote
+# simply skips it.
+g:simplestartify_session_line_providers = Names(
+  Legacy('session_line_providers', ['g:SimpleRemoteSessionLines']))
 g:simplestartify_change_to_vcs_root = Flag(
   Legacy('change_to_vcs_root', 0), 0)
 g:simplestartify_change_to_dir = Flag(Legacy('change_to_dir', 0), 0)
@@ -385,4 +441,10 @@ augroup SimpleStartify
   # width, so a firing that changed nothing costs one getwininfo().
   autocmd WinEnter,BufWinEnter * call simplestartify#Reflow()
   autocmd ColorScheme * call simplestartify#SetupHighlights()
+  # SimpleRemote's connection events.  The remote section marks the connected
+  # workspace, so a dashboard left open in a split is redrawn when that
+  # changes; nothing fires these without SimpleRemote, and the handler opens
+  # no dashboard of its own.
+  autocmd User SimpleRemoteConnected,SimpleRemoteDisconnected,SimpleRemoteWorkspaceChanged
+        \ call simplestartify#RefreshIfDashboard()
 augroup END

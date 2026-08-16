@@ -13,6 +13,7 @@ CONTENTS                                             *simplestartify-contents*
     4. Dashboard keys ............ |simplestartify-keys|
     5. Recent files .............. |simplestartify-recent|
     5a. Sections ................. |simplestartify-sections|
+    5b. Remote workspaces ........ |simplestartify-remote|
     6. Options ................... |simplestartify-options|
     7. Commands .................. |simplestartify-commands|
     8. Session safety ............ |simplestartify-sessions|
@@ -172,7 +173,8 @@ it existing, and |g:simplestartify_mru_persist| turns it off entirely.
 |g:simplestartify_lists| decides which sections the dashboard draws and in
 what order.  Eight section types exist:
 
-    remote      recent SimpleRemote SSH or Docker workspaces
+    remote      SimpleRemote workspaces: recent connections and configured
+                profiles (|simplestartify-remote|)
     files       recent files, anywhere
     dir         recent files below the working directory
     project     recent files below the working directory's Git root, or
@@ -203,6 +205,137 @@ cursor and |<CR>|; the "?" list shows them as "<CR> only".
 an unconfigured bookmarks section costs no screen space.
 |:SimpleStartifyHealth| names each drawn section with its entry count and
 warns about a configured section that was left out for being empty.
+
+==============================================================================
+5b. REMOTE WORKSPACES                                  *simplestartify-remote*
+
+Everything in this section is optional and feature-detected.  Without
+SimpleRemote (https://github.com/beamiter/simpleremote) on 'runtimepath' the
+"remote" section draws nothing and is left out, remote bookmarks say why they
+cannot open, and nothing here reports an error.  SimpleStartify calls
+SimpleRemote's public functions only; it never reads its history file or its
+internal state.
+
+THE REMOTE SECTION
+
+The "remote" section lists, in this order:
+
+    - the most recent workspaces, from g:SimpleRemoteRecentWorkspaces(), at
+      most |g:simplestartify_remote_count| of them;
+    - every configured profile, from g:SimpleRemoteProfiles(), that the
+      recent list did not already show.
+
+A profile is configuration, not history, so the count does not apply to it:
+profiles are listed the way |g:simplestartify_bookmarks| are, whole.  Two
+entries are the same workspace when their kind, target and root all match.
+
+Entry labels read "SSH  devbox · /srv/app": the kind, then the profile name
+if it has one or the host with any "user@" prefix removed, then the workspace
+root.  Two suffixes may follow: >
+
+    DOCKER  api · /workspace/api (connected)
+    SSH  staging (profile)
+    SSH  devbox · /srv/app (profile, connected)
+<
+"(profile)" marks an entry that came from the profile list, and "(connected)"
+marks the workspace SimpleRemote is connected to right now.  A profile may
+have no root of its own - SimpleRemote prompts for one when it is opened - and
+then the label has no root part and the entry counts as connected whenever its
+kind and target are connected, whatever root was chosen.
+
+Pressing |<CR>| on an entry hands the complete specification back to
+g:SimpleRemoteOpenWorkspace(), which connects and opens the remote workspace
+tree when the connection is ready.  "s", "v" and "t" (and
+|g:simplestartify_open_action|) apply as they do everywhere else: the
+dashboard is left through the same enew/new/vnew/tabnew the "new buffer"
+entry uses, so a workspace can be started in a split or in a new tab - which
+pairs with SimpleRemote's own g:simpleremote_change_directory = 'tab'.
+
+Selecting the entry that is already connected does not tear the connection
+down and build the same one again: it re-roots the workspace tree with
+g:SimpleRemoteTreeSetRoot() and shows it.  The label is only as fresh as the
+last draw, so the connection is checked again when the key is pressed; an
+entry whose workspace disappeared meanwhile simply connects.
+
+A dashboard that is on screen is redrawn when SimpleRemote connects,
+disconnects or switches workspace, so the "(connected)" marker keeps up with
+the connection.  Only visible dashboards are redrawn - a connection never
+opens a dashboard that nobody asked for.
+
+REMOTE BOOKMARKS
+
+A |g:simplestartify_bookmarks| entry whose path begins with "remote://" is a
+remote path, not a local one: it is kept exactly as written instead of being
+expanded against the working directory.  The dictionary form may name the
+workspace it belongs to: >
+
+    let g:simplestartify_bookmarks = [
+      \ {'path': 'remote:///srv/app/README.md', 'key': 'w',
+      \  'workspace': {'kind': 'ssh', 'target': 'devbox',
+      \                'root': '/srv/app'}},
+      \ 'remote:///srv/app/TODO.md']
+<
+Opening one of these:
+
+    - with its workspace already connected, or with no workspace named and
+      some workspace connected, edits the file at once - through the local
+      projection when the workspace has one (an sshfs or bind mount, so the
+      buffer is the same file the tree would open), and as a "remote://"
+      buffer otherwise;
+    - with another workspace connected, or none, and a workspace named,
+      connects that workspace first and opens the file as soon as
+      SimpleRemote reports it ready.  The split or tab verb is spent
+      immediately, on leaving the dashboard, so the file lands in the window
+      that was asked for even though the edit itself happens later;
+    - with no workspace named and nothing connected, reports that a workspace
+      has to be connected first.
+
+One such wait exists at a time.  A connection to a different workspace ends
+it without opening anything: after a failed connect the user has moved on,
+and a file appearing in a workspace nobody asked it for would be worse than
+no file at all.  Activate the bookmark again to retry.
+
+SESSIONS
+
+|g:simplestartify_session_line_providers| lets another plugin add lines to
+every session file, and SimpleRemote's g:SimpleRemoteSessionLines() is in the
+default, so a remote workspace comes back with its session without any
+configuration.  What it writes is one assignment of
+g:simpleremote_session_workspace; SimpleRemote listens for
+|simplestartify-session-loaded|'s companion event
+SimpleStartifySessionLoadPost, reconnects that workspace and re-reads the
+session's "remote://" buffers, which |:mksession| restores as empty shells
+because their contents live on the other side of the connection.
+
+The order matters and is fixed: the provider lines come after
+|g:simplestartify_session_savevars| and before
+|g:simplestartify_session_savecmds|, and all of them after |:mksession|'s own
+output - which is why the reconnect happens on SimpleStartifySessionLoadPost
+rather than on Vim's |SessionLoadPost|, which the session file fires before
+those lines have run.
+
+A load that throws is rolled back and fires neither event, so it also does
+not reconnect anything: what is on screen is the previous layout, and telling
+a listener that the session it wanted to act on has arrived would be a lie.
+This matters for sshfs and bind-mount workspaces, whose session files contain
+a |:cd| into the mount point: with the mount gone, that |:cd| fails while the
+session is being sourced, the load is rolled back and reports its error.
+Connect the workspace first - from the remote section of the dashboard - and
+load the session again.
+
+Do not put "g:simpleremote_workspace" in |g:simplestartify_session_savevars|.
+That global is SimpleRemote's live connection state, and restoring it from a
+session file would announce a connection that does not exist to every plugin
+in the suite that gates on it.  The provider above stores what is needed to
+rebuild the connection instead.
+
+HEALTH
+
+|:SimpleStartifyHealth| reports whether SimpleRemote is installed and, when
+it is, the current g:simpleremote_status.  An empty remote section is never a
+warning: with no SimpleRemote, or with no connection made and no profile
+configured yet, having nothing to draw is the normal state and the report
+says which of the two it is.
 
 ==============================================================================
 6. OPTIONS                                           *simplestartify-options*
@@ -287,20 +420,32 @@ section.  Unknown types and other
 value types are discarded during startup normalization; if that leaves
 nothing, the default list is restored.
 
-The "remote" section is omitted when SimpleRemote is unavailable or has no
-history.  It consumes SimpleRemote's public API rather than its history file.
-Pressing Enter restores the complete connection specification and opens the
-remote SimpleTree workspace as soon as the connection is ready.
+The "remote" section is omitted when SimpleRemote is unavailable or has
+neither a recent workspace nor a configured profile to show.  It consumes
+SimpleRemote's public API rather than its history file.  See
+|simplestartify-remote| for what it lists, what its labels mean, and what
+|<CR>| does with an entry.
 
                                                *g:simplestartify_bookmarks*
-Paths pinned to the dashboard, in order.  Default [].  Each item is either a
-path, or a single-entry dictionary mapping a shortcut key to a path: >
+Paths pinned to the dashboard, in order.  Default [].  Each item is a path, a
+dictionary mapping shortcut keys to paths, or an explicit entry: >
 
-    let g:simplestartify_bookmarks = ['~/.vimrc', {'c': '~/.vim/config'}]
+    let g:simplestartify_bookmarks = [
+      \ '~/.vimrc',
+      \ {'c': '~/.vim/config'},
+      \ {'path': '~/notes.md', 'key': 'o'}]
 <
-The path is expanded with |expand()|.  A bookmark is shown whether or not it
-exists yet: opening a directory bookmark opens the directory, and opening a
-bookmark to a file that is not there creates an empty buffer for that name.
+The explicit form is a dictionary whose members are "path" and, optionally,
+"key" and "workspace" - nothing else.  A dictionary carrying any other member
+is the key-to-path form, whose keys may be named anything at all, so existing
+g:startify_bookmarks values keep working unchanged.  "workspace" applies to
+remote paths only; see |simplestartify-remote|.
+
+The path is expanded with |expand()|, unless it begins with "remote://",
+which is a path inside a SimpleRemote workspace and is kept as written.  A
+bookmark is shown whether or not it exists yet: opening a directory bookmark
+opens the directory, and opening a bookmark to a file that is not there
+creates an empty buffer for that name.
 A requested key must be a single character in [0-9A-Za-z] and must not be one
 of the keys the dashboard already owns ("n", "r", "q", "s", "t", "v", "j",
 "k", "d", "D", "R", "?"); a rejected key is replaced by an automatic one, and
@@ -343,8 +488,9 @@ before it reaches what is behind them.  See |simplestartify-testing|.
 
                                               *g:simplestartify_remote_count*
 Maximum recent SimpleRemote workspaces to show.  Default 3, clamped to 0..12.
-Set it to 0 to hide remote history without changing
-|g:simplestartify_lists|.
+Set it to 0 to hide remote history without changing |g:simplestartify_lists|.
+Configured profiles are not history and are all shown regardless; see
+|simplestartify-remote|.
 
                                               *g:simplestartify_recent_count*
 Maximum recent files to show.  Default 7, clamped to 0..50.  It is the default
@@ -412,6 +558,28 @@ Ex command lines to append to a session verbatim, for example >
 Default [].  Both lists are appended to the temporary file after |:mksession|
 and before it is renamed into place, so a session carrying extra state is
 still replaced atomically.
+
+                                  *g:simplestartify_session_line_providers*
+Global functions asked, at every save, for extra session lines.  Default: >
+
+    let g:simplestartify_session_line_providers =
+      \ ['g:SimpleRemoteSessionLines']
+<
+Each item is the name of a global function, "g:" followed by an identifier;
+other items are discarded during startup normalization.  A provider takes no
+arguments and returns a list of strings, each of which becomes one line of
+the session file; the lines are written after
+|g:simplestartify_session_savevars| and before
+|g:simplestartify_session_savecmds|, so a savecmd can rely on everything the
+two lists before it restored.
+
+A provider that is not defined in this Vim is skipped without a word, which
+is what lets the SimpleRemote default cost nothing in a Vim that does not
+have SimpleRemote.  One that throws, or returns anything other than a list of
+strings, reports "[SimpleStartify] session line provider ... failed" and the
+save continues: a session missing one plugin's lines is worth more than no
+session.  Setting this option replaces the default, SimpleRemote's provider
+included.  See |simplestartify-remote|.
 
                                         *g:simplestartify_change_to_vcs_root*
 After opening a recent file, use |:lcd| to change to its nearest Git root.
@@ -522,7 +690,7 @@ string disables persistence in the same way as
                                                   *:SimpleStartifyHealth*
 :SimpleStartifyHealth
         Open a scratch buffer reporting what is and is not working, one
-        "[OK]", "[WARN]" or "[ERROR]" line per fact, in four sections:
+        "[OK]", "[WARN]" or "[ERROR]" line per fact, in six sections:
 
         ENVIRONMENT     Vim version against the 9.1 minimum, |textprop|
                         support.
@@ -533,7 +701,12 @@ string disables persistence in the same way as
         SECTIONS        each section that would be drawn with its entry
                         count, any entries past the end of the shortcut
                         alphabet, and any configured section left out for
-                        being empty.
+                        being empty.  The remote section is never reported
+                        that way; it has a section of its own.
+        REMOTE WORKSPACES
+                        whether SimpleRemote is installed, its
+                        g:simpleremote_status, and why the remote section is
+                        empty when it is.  See |simplestartify-remote|.
         RECENT FILES    how many entries come from each source, whether
                         'viminfo' can persist |v:oldfiles| at all, and where
                         the recent-file cache lives.
@@ -559,7 +732,9 @@ returned by simplestartify#Health() for scripting.  Members: "ok", "report"
 (the rendered lines), "styles", "width", "sections" (the model that would be
 drawn), "configured" (the section types in |g:simplestartify_lists|),
 "session_dir", "session_writable", "session_count", "session_leftovers",
-"mru_count", "mru_file", "mru_persist" and "oldfiles_count".
+"mru_count", "mru_file", "mru_persist", "oldfiles_count",
+"remote_installed" (whether SimpleRemote's workspace or profile function
+exists) and "remote_status" (g:simpleremote_status, or "disconnected").
 
 "ok" is false when any check produced an ERROR line, which now includes an
 existing but unwritable session directory and an existing but unwritable
@@ -738,6 +913,18 @@ automatic ones from |g:simplestartify_session_persistence|, |:SClose| and
 the write, so a hook that throws fails the save and leaves the previous
 session file untouched rather than replacing it with half a workspace.
 
+The two load events are different: they run after the load is final, outside
+the |try| that rolls a failed load back.  A listener that throws - the
+SimpleRemote reconnect of |simplestartify-remote|, or anything else -
+reports "[SimpleStartify] session load hook failed: ..." and the session
+stays loaded, rather than turning a session that was sourced whole into a
+rollback.  A load that was rolled back fires neither event.
+
+Listeners on SimpleRemote's own |User| events (SimpleRemoteConnected,
+SimpleRemoteDisconnected, SimpleRemoteWorkspaceChanged) are registered
+unconditionally and redraw a dashboard that is on screen; without
+SimpleRemote nothing ever fires them.
+
 ==============================================================================
 10. PLUG MAPPINGS                                   *simplestartify-mappings*
 
@@ -792,8 +979,12 @@ Run the complete local quality gate from the repository root: >
     make check
 <
 It compiles every Vim9 def and runs the fixture-helper, smoke, UI/width,
-section and filter, session-safety, project-session, recent-files, highlight,
-health, window-management and vim-startify compatibility test scripts.  The
+section and filter, SimpleRemote integration, session-safety,
+project-session, recent-files, highlight, health, window-management and
+vim-startify compatibility test scripts.  The SimpleRemote script runs
+without SimpleRemote on 'runtimepath': it stubs the g:SimpleRemote*
+functions and fires its |User| events by hand, which is also the contract -
+every call into SimpleRemote is feature-detected.  The
 project-session script starts a child Vim so the |VimEnter| hook is exercised
 the way a user starts an editor, with and without a file argument.
 

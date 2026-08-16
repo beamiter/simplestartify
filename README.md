@@ -56,14 +56,15 @@ let g:simplestartify_custom_header = []   " list of lines, or a string
 let g:simplestartify_custom_footer = []
 
 let g:simplestartify_lists = [
-  \ {'type': 'files'}, {'type': 'sessions'}, {'type': 'bookmarks'},
-  \ {'type': 'commands'}, {'type': 'special'}]
+  \ {'type': 'remote'}, {'type': 'files'}, {'type': 'sessions'},
+  \ {'type': 'bookmarks'}, {'type': 'commands'}, {'type': 'special'}]
 let g:simplestartify_bookmarks = []
 let g:simplestartify_commands = []
 let g:simplestartify_skiplist = [
   \ '\.git[\\/]\%(COMMIT_EDITMSG\|MERGE_MSG\|TAG_EDITMSG\|SQUASH_MSG\)$',
   \ '\.git[\\/]rebase-\%(merge\|apply\)[\\/]']
 
+let g:simplestartify_remote_count = 3   " clamped to 0..12
 let g:simplestartify_recent_count = 7   " clamped to 0..50
 let g:simplestartify_session_count = 4  " clamped to 0..13
 let g:simplestartify_session_dir = '~/.vim/session'
@@ -71,6 +72,7 @@ let g:simplestartify_session_persistence = 0
 let g:simplestartify_session_autoload = 0
 let g:simplestartify_session_savevars = []
 let g:simplestartify_session_savecmds = []
+let g:simplestartify_session_line_providers = ['g:SimpleRemoteSessionLines']
 
 let g:simplestartify_change_to_vcs_root = 0
 let g:simplestartify_change_to_dir = 0
@@ -134,17 +136,27 @@ session carrying extra state is still replaced atomically. A variable that is
 unset, or holds something `string()` cannot render as sourceable text such as
 a Funcref, is skipped rather than producing a session that fails to load.
 
+`g:simplestartify_session_line_providers` names global functions asked for
+extra session lines at every save. Each returns a list of strings that are
+written after the saved variables and before the saved commands. A provider
+that is not defined in this Vim is skipped silently, which is what lets
+SimpleRemote's `g:SimpleRemoteSessionLines` be the zero-config default; one
+that throws or returns something else reports it and the save continues.
+
 Sessions also emit `User SimpleStartifySessionSavePre`/`SavePost` and
 `LoadPre`/`LoadPost`. `SavePre` runs inside the same `try` as the write, so a
 hook that throws fails the save and leaves the previous session file intact.
+The two load events run after the load is final, outside the rollback `try`: a
+hook that throws is reported and the session stays loaded, and a load that was
+rolled back fires neither event.
 
 ### Sections
 
 `g:simplestartify_lists` decides what the dashboard shows and in what order.
-Seven section types exist: `files` (recent files anywhere), `dir` (recent
-files below the working directory), `project` (recent files below its Git
-root), `sessions`, `bookmarks`, `commands`, and `special` (new buffer,
-restyle, quit).
+Eight section types exist: `remote` (SimpleRemote workspaces, see below),
+`files` (recent files anywhere), `dir` (recent files below the working
+directory), `project` (recent files below its Git root), `sessions`,
+`bookmarks`, `commands`, and `special` (new buffer, restyle, quit).
 
 ```vim
 let g:simplestartify_lists = [
@@ -175,7 +187,55 @@ opened with the cursor and `<CR>`.
 section is left out when it has nothing in it, so the default configuration
 looks exactly as it did before sections existed. `:SimpleStartifyHealth` lists
 each drawn section with its entry count and names any configured section left
-out for being empty.
+out for being empty -- except `remote`, which is empty whenever SimpleRemote
+is absent and gets a report section of its own instead of a warning.
+
+### SimpleRemote workspaces
+
+With [SimpleRemote](https://github.com/beamiter/simpleremote) installed, the
+`remote` section -- first in the default deck -- lists the workspaces you can
+go back to: the most recent connections, capped by
+`g:simplestartify_remote_count`, followed by every configured profile the
+recent list did not already show. Profiles are configuration rather than
+history, so the count does not apply to them.
+
+```
+  REMOTE WORKSPACES
+    [a]  SSH  devbox · /srv/app (connected)
+    [b]  DOCKER  api · /workspace/api
+    [c]  SSH  staging (profile)
+```
+
+`<CR>` hands the whole specification back to SimpleRemote, which connects and
+opens the remote workspace tree; `s`, `v` and `t` start it in a split or a new
+tab. The entry that is already connected is not reconnected -- the workspace
+tree is re-rooted there and shown. A dashboard that is on screen redraws when
+SimpleRemote connects, disconnects or switches workspace, so the `(connected)`
+marker keeps up; a connection never opens a dashboard nobody asked for.
+
+A bookmark whose path starts with `remote://` is a path inside a workspace and
+is kept as written instead of being expanded against the working directory. It
+may name the workspace it belongs to, and is then opened by connecting first
+and editing the file once the workspace is ready:
+
+```vim
+let g:simplestartify_bookmarks = [
+  \ {'path': 'remote:///srv/app/README.md', 'key': 'w',
+  \  'workspace': {'kind': 'ssh', 'target': 'devbox', 'root': '/srv/app'}}]
+```
+
+Sessions carry the workspace too: `g:SimpleRemoteSessionLines` is the default
+session-line provider, so `:SSave` records the connected workspace and `:SLoad`
+reconnects it and re-reads the session's `remote://` buffers. Do not put
+`g:simpleremote_workspace` in `g:simplestartify_session_savevars` -- that
+global is SimpleRemote's live connection state, and restoring it from a file
+would announce a connection that does not exist.
+
+Every call into SimpleRemote is feature-detected. Without it, the `remote`
+section simply is not drawn, remote bookmarks say a workspace has to be
+connected first, and nothing reports an error. `:SimpleStartifyHealth` says
+whether SimpleRemote is installed and what it is connected to. See
+`:help simplestartify-remote`.
 
 `g:simplestartify_skiplist` is a list of Vim patterns for paths that are never
 recorded and never shown. It defaults to the `.git` files another tool writes
@@ -261,7 +321,7 @@ first.
 | `:vertical` / `:tab` / `:botright SimpleStartify` | open it in its own window or tab instead of taking over the current one |
 | `:SimpleStartifyRefresh` | rebuild the current style without rerolling it |
 | `:SimpleStartifyNextStyle` | make a new eligible random draw while on the dashboard |
-| `:SimpleStartifyHealth` | open a report of environment, styles, recent-file sources and session state, one `[OK]`/`[WARN]`/`[ERROR]` line per fact |
+| `:SimpleStartifyHealth` | open a report of environment, styles, sections, SimpleRemote, recent-file sources and session state, one `[OK]`/`[WARN]`/`[ERROR]` line per fact |
 | `:SimpleStartifyClean` | delete leftover `.simplestartify-tmp-*` files from an interrupted save |
 | `:SimpleStartifyForget [path]` | drop a path from the recent list and from `v:oldfiles`; without an argument, the selected dashboard entry |
 | `:Startify` | compatibility alias for `:SimpleStartify` |
@@ -366,9 +426,12 @@ make check
 ```
 
 This compiles every Vim9 `def` and runs the fixture-helper, smoke, width/layout,
-random-choice, section and filter, recent-files, highlighting, health,
-session-safety, project-session, window-management and vim-startify
-compatibility regression tests. The project-session script starts a child Vim so
+random-choice, section and filter, SimpleRemote integration, recent-files,
+highlighting, health, session-safety, project-session, window-management and
+vim-startify compatibility regression tests. The SimpleRemote script runs
+without SimpleRemote on the `runtimepath`: it stubs the `g:SimpleRemote*`
+functions and fires the `User SimpleRemote*` events by hand, which is the same
+contract the plugin keeps at runtime. The project-session script starts a child Vim so
 the `VimEnter` hook is exercised the way a user starts an editor, with and
 without a file argument.
 

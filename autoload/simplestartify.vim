@@ -196,7 +196,7 @@ enddef
 
 def ShortRemoteTarget(spec: dict<any>): string
   var name = get(spec, 'name', '')
-  if !empty(name)
+  if type(name) == v:t_string && !empty(name)
     return name
   endif
   var target = substitute(get(spec, 'target', ''), '^[^@]\+@', '', '')
@@ -205,43 +205,135 @@ def ShortRemoteTarget(spec: dict<any>): string
     : target
 enddef
 
-def RemoteEntries(limit: number, letters: list<string>): list<dict<any>>
+# The workspace SimpleRemote is connected to, or {}.  The global exists only
+# while a connection is ready - it is removed before Disconnected fires - so
+# its presence is the whole test, and it is read fresh on every use because a
+# dashboard left open in a split outlives any one connection.
+def ConnectedWorkspace(): dict<any>
+  var workspace = get(g:, 'simpleremote_workspace', {})
+  return type(workspace) == v:t_dict ? workspace : {}
+enddef
+
+# A specification names the connected workspace when kind and target agree
+# and its root does too - or when it has no root of its own, which is what a
+# profile without one looks like: whatever root was chosen at the prompt, the
+# connection is that profile's.
+def IsConnected(spec: dict<any>, workspace: dict<any>): bool
+  if empty(workspace)
+    return false
+  endif
+  var root = get(spec, 'root', '')
+  return get(spec, 'kind', '') ==# get(workspace, 'kind', '')
+        \ && get(spec, 'target', '') ==# get(workspace, 'target', '')
+        \ && (empty(root) || root ==# get(workspace, 'root', ''))
+enddef
+
+# What SimpleRemote hands out is data from another plugin: a missing function,
+# a call that throws, a non-list, a list holding non-dictionaries.  None of
+# that may reach the model, so the answer is always a list of copied dicts.
+def RemoteProvider(name: string, arguments: list<any>): list<dict<any>>
   var out: list<dict<any>> = []
-  if limit <= 0 || exists('*g:SimpleRemoteRecentWorkspaces') != 1
+  if exists('*' .. name) != 1
     return out
   endif
-
-  var Provider = function('g:SimpleRemoteRecentWorkspaces')
-  var recent: any = []
+  var value: any = []
   try
-    recent = call(Provider, [limit])
+    value = call(function(name), arguments)
   catch
     return out
   endtry
-  if type(recent) != v:t_list
+  if type(value) != v:t_list
     return out
   endif
+  for item in value
+    if type(item) == v:t_dict
+      add(out, deepcopy(item))
+    endif
+  endfor
+  return out
+enddef
 
-  for value in recent
-    if type(value) != v:t_dict
+# The kind is not restricted to the two SimpleRemote knows today: its own
+# providers normalize what they return, so a kind it adds later shows up here
+# without an edit, and an unknown one is refused by SimpleRemote at open time
+# with its own message rather than hidden silently.
+def ValidRemoteSpec(spec: dict<any>, allow_empty_root: bool): bool
+  var kind = get(spec, 'kind', '')
+  var target = get(spec, 'target', '')
+  var root = get(spec, 'root', '')
+  if type(kind) != v:t_string || empty(kind)
+        \ || type(target) != v:t_string || empty(target)
+        \ || type(root) != v:t_string
+    return false
+  endif
+  return root =~# '^/' || (allow_empty_root && empty(root))
+enddef
+
+def RemoteId(spec: dict<any>): string
+  return join([get(spec, 'kind', ''), get(spec, 'target', ''),
+    get(spec, 'root', '')], "\t")
+enddef
+
+def RemoteEntry(
+    spec: dict<any>,
+    letters: list<string>,
+    workspace: dict<any>,
+    source: string): dict<any>
+  var root = get(spec, 'root', '')
+  var connected = IsConnected(spec, workspace)
+  var label = toupper(get(spec, 'kind', '')) .. '  ' .. ShortRemoteTarget(spec)
+  if !empty(root)
+    label ..= ' · ' .. root
+  endif
+  var tags: list<string> = []
+  if source ==# 'profile'
+    add(tags, 'profile')
+  endif
+  if connected
+    add(tags, 'connected')
+  endif
+  if !empty(tags)
+    label ..= ' (' .. join(tags, ', ') .. ')'
+  endif
+  return {
+    key: TakeKey(letters),
+    kind: 'remote',
+    label: CleanLabel(label),
+    path: root,
+    name: get(spec, 'name', ''),
+    connected: connected,
+    spec: spec,
+  }
+enddef
+
+# Recent workspaces first, up to the limit, then every configured profile not
+# already listed.  The limit is about history: a profile is configuration,
+# and configuration is shown the way bookmarks are, whole - a profile that
+# vanished because the history happened to be long would be worse than one
+# more line.  A profile may have no root; SimpleRemote prompts for one when it
+# is opened, so it is kept and its label simply has no root part.
+def RemoteEntries(limit: number, letters: list<string>): list<dict<any>>
+  var out: list<dict<any>> = []
+  var seen: dict<bool> = {}
+  var workspace = ConnectedWorkspace()
+  if limit > 0
+    for spec in RemoteProvider('g:SimpleRemoteRecentWorkspaces', [limit])
+      if !ValidRemoteSpec(spec, false) || has_key(seen, RemoteId(spec))
+        continue
+      endif
+      seen[RemoteId(spec)] = true
+      add(out, RemoteEntry(spec, letters, workspace, 'recent'))
+      if len(out) >= limit
+        break
+      endif
+    endfor
+  endif
+  for spec in RemoteProvider('g:SimpleRemoteProfiles', [])
+    if !ValidRemoteSpec(spec, true) || has_key(seen, RemoteId(spec))
       continue
     endif
-    var spec = deepcopy(value)
-    var kind = get(spec, 'kind', '')
-    var target = get(spec, 'target', '')
-    var root = get(spec, 'root', '')
-    if index(['ssh', 'docker'], kind) < 0 || empty(target) || root !~# '^/'
-      continue
-    endif
-    add(out, {
-      key: TakeKey(letters),
-      kind: 'remote',
-      label: CleanLabel(toupper(kind) .. '  ' .. ShortRemoteTarget(spec)
-        .. ' · ' .. root),
-      path: root,
-      name: get(spec, 'name', ''),
-      spec: spec,
-    })
+    seen[RemoteId(spec)] = true
+    add(out, RemoteEntry(spec, letters, workspace, 'profile'))
   endfor
   return out
 enddef
@@ -254,6 +346,34 @@ def Configured(name: string): list<dict<any>>
   return filter(copy(value), (_, item) => type(item) == v:t_dict)
 enddef
 
+# A remote bookmark is "remote://" followed by an absolute remote path - the
+# buffer name SimpleRemote gives a virtual-workspace file - and, optionally,
+# the workspace it belongs to.  It is not a local path: expanding it would make
+# it one, relative to whatever the working directory happens to be, so it is
+# kept as written apart from trailing slashes.  The label follows the remote
+# workspace entries so the two read alike, and falls back to the URI when no
+# workspace was named.
+def RemoteBookmarkEntry(item: dict<any>, target: string, key: string): dict<any>
+  var remote = substitute(strpart(target, len('remote://')), '\(.\)/\+$', '\1', '')
+  # plugin/ validated this once, but the option can be assigned after startup
+  # and the model must not throw over a value it did not vet.
+  var configured: any = get(item, 'workspace', {})
+  var workspace: dict<any> = type(configured) == v:t_dict
+        \ && ValidRemoteSpec(configured, false) ? configured : {}
+  var label = empty(workspace)
+        \ ? 'remote://' .. remote
+        \ : toupper(get(workspace, 'kind', '')) .. '  '
+          .. ShortRemoteTarget(workspace) .. ' · ' .. remote
+  return {
+    key: key,
+    kind: 'bookmark',
+    label: CleanLabel(label),
+    path: 'remote://' .. remote,
+    remote: remote,
+    workspace: deepcopy(workspace),
+  }
+enddef
+
 def BookmarkEntries(limit: number, letters: list<string>): list<dict<any>>
   var out: list<dict<any>> = []
   for item in Configured('simplestartify_bookmarks')
@@ -264,12 +384,21 @@ def BookmarkEntries(limit: number, letters: list<string>): list<dict<any>>
     if type(target) != v:t_string || empty(target)
       continue
     endif
+    var pinned = get(item, 'key', '')
+    var key = type(pinned) == v:t_string && !empty(pinned) ? pinned : TakeKey(letters)
+    # Any remote:// target, not only a well-formed remote:///absolute one: a
+    # malformed URI is SimpleRemote's to refuse when the bookmark is opened,
+    # and expanding it into a local path under the working directory - which
+    # is what the branch below would do - is never what was meant.
+    if target =~# '^remote://'
+      add(out, RemoteBookmarkEntry(item, target, key))
+      continue
+    endif
     # A bookmark is shown whether or not the target exists yet: it is a place
     # the user asked to keep, and opening a missing one creates the buffer.
     var path = substitute(fnamemodify(expand(target), ':p'), '[\\/]\+$', '', '')
-    var key = get(item, 'key', '')
     add(out, {
-      key: type(key) == v:t_string && !empty(key) ? key : TakeKey(letters),
+      key: key,
       kind: 'bookmark',
       label: DisplayPath(path),
       path: path,
@@ -953,6 +1082,28 @@ export def Refresh()
   Render(style, selected)
 enddef
 
+# Redraw every visible dashboard, and open none.  This is what a SimpleRemote
+# connection change calls: the remote section marks the connected workspace
+# and the connection may come or go while a dashboard sits in a split, but a
+# user who has no dashboard on screen did not ask for one, which is exactly
+# what Refresh() would give them.
+export def RefreshIfDashboard()
+  var handled: dict<bool> = {}
+  for info in getwininfo()
+    var buffer = string(info.bufnr)
+    # The 'filetype' is part of what a dashboard is, and it is what Refresh()
+    # checks before opening one: a window holding the marker without it would
+    # otherwise be answered with a brand-new dashboard.
+    if getbufvar(info.bufnr, 'simplestartify', 0) != 1
+          || getbufvar(info.bufnr, '&filetype') !=# 'startify'
+          || has_key(handled, buffer)
+      continue
+    endif
+    handled[buffer] = true
+    win_execute(info.winid, 'call simplestartify#Refresh()')
+  endfor
+enddef
+
 export def NextStyle()
   if !IsDashboard()
     Open()
@@ -1188,26 +1339,142 @@ def Quit()
   endif
 enddef
 
-def OpenRemoteWorkspace(spec: dict<any>)
+# Leave the dashboard the way the verb says - the same enew/new/vnew/tabnew a
+# "new buffer" entry uses - so a workspace can be started in a split or a tab
+# rather than always over the dashboard.  Both branches do it before calling
+# into SimpleRemote, whose tree opens beside the current window.
+def OpenRemoteWorkspace(action: dict<any>, verb: string)
+  var spec = get(action, 'spec', {})
+  # The model said "connected" when it was built; the connection may be gone
+  # by the time the key is pressed, so ask again rather than trusting a label.
+  if get(action, 'connected', false)
+        \ && IsConnected(spec, ConnectedWorkspace())
+        \ && exists('*g:SimpleRemoteTreeSetRoot') == 1
+    # Already there: re-root the workspace tree at the workspace and show it,
+    # instead of tearing the connection down to build the same one again.
+    var root = get(ConnectedWorkspace(), 'root', get(spec, 'root', ''))
+    try
+      execute 'silent keepalt ' .. OPEN_VERBS[verb].new
+      call(function('g:SimpleRemoteTreeSetRoot'), [root])
+      if exists(':SimpleRemoteWorkspace') == 2
+        execute 'SimpleRemoteWorkspace'
+      endif
+    catch
+      Notify('remote workspace failed: ' .. v:exception, true)
+    endtry
+    return
+  endif
   if exists('*g:SimpleRemoteOpenWorkspace') != 1
     Notify('SimpleRemote is not available', true)
     return
   endif
   var Opener = function('g:SimpleRemoteOpenWorkspace')
   try
-    silent keepalt enew
+    execute 'silent keepalt ' .. OPEN_VERBS[verb].new
     call(Opener, [deepcopy(spec)])
   catch
     Notify('remote workspace failed: ' .. v:exception, true)
   endtry
 enddef
 
+# Open a remote path in the connected workspace: the local projection when
+# the workspace has one (an sshfs or bind mount, so the buffer is the same
+# file the tree would open), the remote:// buffer otherwise.  {winid} is the
+# window the user was in when the connection was asked for; if it is gone the
+# current one serves.
+def EditRemotePath(remote: string, verb: string, winid: number = 0)
+  if winid > 0 && win_id2win(winid) > 0
+    win_gotoid(winid)
+  endif
+  var target = 'remote://' .. remote
+  if exists('*g:SimpleRemoteLocalPath') == 1
+    var local: any = ''
+    try
+      local = call(function('g:SimpleRemoteLocalPath'), [remote])
+    catch
+      local = ''
+    endtry
+    if type(local) == v:t_string && !empty(local)
+      target = local
+    endif
+  endif
+  try
+    execute OPEN_VERBS[verb].file .. ' ' .. fnameescape(target)
+  catch
+    Notify('cannot open ' .. target .. ': ' .. v:exception, true)
+  endtry
+enddef
+
+# The remote bookmark whose workspace is being connected for it, if any.
+# One at a time is the whole design: a second remote bookmark activated
+# before the first connection is ready replaces it, exactly as the second
+# connection replaces the first.
+var pending_bookmark: dict<any> = {}
+
+def OpenRemoteBookmark(action: dict<any>, verb: string)
+  var remote = get(action, 'remote', '')
+  var workspace = get(action, 'workspace', {})
+  var connected = ConnectedWorkspace()
+  if !empty(connected) && (empty(workspace) || IsConnected(workspace, connected))
+    EditRemotePath(remote, verb)
+    return
+  endif
+  if empty(workspace)
+    Notify('connect a SimpleRemote workspace first: remote://' .. remote, true)
+    return
+  endif
+  if exists('*g:SimpleRemoteOpenWorkspace') != 1
+    Notify('SimpleRemote is not available', true)
+    return
+  endif
+  # Connect first; the file is opened once SimpleRemote says the workspace is
+  # ready.  The verb is spent now, on leaving the dashboard, and the file
+  # then goes into that window - a split asked for is a split delivered even
+  # though the edit itself happens later.
+  try
+    execute 'silent keepalt ' .. OPEN_VERBS[verb].new
+  catch
+    Notify('cannot open a window there: ' .. v:exception, true)
+    return
+  endtry
+  pending_bookmark = {remote: remote, workspace: deepcopy(workspace),
+    winid: win_getid()}
+  augroup SimpleStartifyRemoteBookmark
+    autocmd!
+    autocmd User SimpleRemoteConnected ++once call simplestartify#OpenPendingRemoteBookmark()
+  augroup END
+  try
+    call(function('g:SimpleRemoteOpenWorkspace'), [deepcopy(workspace)])
+  catch
+    pending_bookmark = {}
+    autocmd! SimpleStartifyRemoteBookmark
+    Notify('remote workspace failed: ' .. v:exception, true)
+  endtry
+enddef
+
+# Runs on the SimpleRemoteConnected that follows a remote bookmark.  The
+# connection that arrived has to be the one asked for: a connect that failed
+# leaves the one-shot autocmd armed, and the next workspace the user opens by
+# hand must not have a stranger's file opened into it.  The edit is deferred
+# past the autocmd, because a BufReadCmd - which is what actually fetches a
+# remote:// buffer - does not fire from inside another autocmd.
+export def OpenPendingRemoteBookmark()
+  var pending = pending_bookmark
+  pending_bookmark = {}
+  if empty(pending) || !IsConnected(pending.workspace, ConnectedWorkspace())
+    return
+  endif
+  timer_start(0, (_) => EditRemotePath(pending.remote, 'edit', pending.winid))
+enddef
+
 def Run(action: dict<any>, verb: string)
   var kind = get(action, 'kind', '')
   if kind ==# 'remote'
-    OpenRemoteWorkspace(get(action, 'spec', {}))
+    OpenRemoteWorkspace(action, verb)
   elseif kind ==# 'file'
     OpenFile(get(action, 'path', ''), verb)
+  elseif kind ==# 'bookmark' && has_key(action, 'remote')
+    OpenRemoteBookmark(action, verb)
   elseif kind ==# 'bookmark'
     OpenBookmark(get(action, 'path', ''), verb)
   elseif kind ==# 'command'
@@ -1296,6 +1563,7 @@ const FIXED_KEYS = [
 ]
 
 const KIND_TITLES = {
+  remote: 'REMOTE WORKSPACES',
   file: 'RECENT FILES',
   session: 'SESSIONS',
   bookmark: 'BOOKMARKS',
@@ -1436,11 +1704,43 @@ def CheckSections(report: list<string>, result: dict<any>): bool
         .. 'reach them with j/k and <CR>', keyless))
   endfor
   for kind in result.configured
-    if index(drawn, kind) < 0
+    # The remote section is empty whenever SimpleRemote is not installed or
+    # has nothing to list yet, which is the normal state and not a warning;
+    # CheckRemote says which it is.
+    if index(drawn, kind) < 0 && kind !=# 'remote'
       Say(report, 'WARN', kind .. ': configured but empty',
         'an empty configurable section is not drawn')
     endif
   endfor
+  add(report, '')
+  return true
+enddef
+
+# Whether SimpleRemote is there at all, and what it is connected to: the two
+# facts behind "why is there no remote section" and "why is nothing marked
+# connected", neither of which the dashboard can show.
+def CheckRemote(report: list<string>, result: dict<any>): bool
+  add(report, 'REMOTE WORKSPACES')
+  if !result.remote_installed
+    Say(report, 'OK', 'SimpleRemote is not installed',
+      'the remote section is left out and remote bookmarks cannot connect')
+    add(report, '')
+    return true
+  endif
+  Say(report, 'OK', 'SimpleRemote status: ' .. result.remote_status)
+  var drawn = 0
+  for section in result.sections
+    if section.id ==# 'remote'
+      drawn = len(section.entries)
+    endif
+  endfor
+  if index(result.configured, 'remote') < 0
+    Say(report, 'OK', 'remote section not in g:simplestartify_lists')
+  elseif drawn == 0
+    Say(report, 'OK', 'remote: no recent workspaces or profiles yet',
+      'the section appears after the first connection, or with '
+      .. 'g:simpleremote_profiles')
+  endif
   add(report, '')
   return true
 enddef
@@ -1532,6 +1832,11 @@ def CheckSessions(report: list<string>, result: dict<any>): bool
   return ok
 enddef
 
+def RemoteStatus(): string
+  var status = get(g:, 'simpleremote_status', 'disconnected')
+  return type(status) == v:t_string && !empty(status) ? status : 'disconnected'
+enddef
+
 export def Health(): dict<any>
   var width = DashboardWidth()
   var styles = simplestartify#ui#Candidates(
@@ -1552,6 +1857,9 @@ export def Health(): dict<any>
     mru_file: mru_file,
     mru_persist: Flag('simplestartify_mru_persist', 1) && !empty(mru_file),
     oldfiles_count: exists('v:oldfiles') ? len(v:oldfiles) : 0,
+    remote_installed: exists('*g:SimpleRemoteRecentWorkspaces') == 1
+      || exists('*g:SimpleRemoteProfiles') == 1,
+    remote_status: RemoteStatus(),
   }
   # Each check appends its own section and returns whether anything it found
   # was fatal, so `ok` is the conjunction of the ERROR-level facts rather than
@@ -1559,6 +1867,7 @@ export def Health(): dict<any>
   var ok = CheckEnvironment(report)
   ok = CheckStyles(report, styles, width) && ok
   ok = CheckSections(report, result) && ok
+  ok = CheckRemote(report, result) && ok
   ok = CheckRecent(report, result) && ok
   ok = CheckSessions(report, result) && ok
   result.ok = ok

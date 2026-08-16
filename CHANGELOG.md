@@ -4,6 +4,45 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- The `remote` section now lists SimpleRemote's configured profiles as well as
+  its recent workspaces, and marks the one that is connected. A profile is
+  configuration rather than history, so `g:simplestartify_remote_count` caps
+  the recent entries only; a profile with no root of its own is kept and
+  SimpleRemote prompts for one when it is opened. Selecting the connected
+  workspace re-roots its tree instead of tearing the connection down to build
+  the same one again, and the split and tab verbs finally apply to remote
+  entries, so `t` starts a workspace in its own tab.
+- A dashboard that is on screen is redrawn on
+  `User SimpleRemoteConnected`/`Disconnected`/`WorkspaceChanged`, so the
+  `(connected)` marker keeps up with the connection. A dashboard nobody has
+  open is never opened by one.
+- `g:simplestartify_bookmarks` accepts `remote://` paths: the target is kept
+  as written instead of being expanded into a local path under the working
+  directory, and an explicit `{'path': ..., 'key': ..., 'workspace': ...}`
+  entry names the workspace it belongs to. Opening one edits the file when its
+  workspace is connected -- through the local projection when the workspace is
+  mounted -- and otherwise connects that workspace first and opens the file
+  once SimpleRemote reports it ready. A dictionary carrying any member besides
+  those three is still vim-startify's key-to-path form.
+- Added `g:simplestartify_session_line_providers`: global functions asked for
+  extra session lines at every save, written after
+  `g:simplestartify_session_savevars` and before
+  `g:simplestartify_session_savecmds`. SimpleRemote's
+  `g:SimpleRemoteSessionLines` is the default, so `:SSave` records the
+  connected workspace and `:SLoad` reconnects it and re-reads the session's
+  `remote://` buffers with no configuration at all. A provider that is not
+  defined is skipped silently; one that throws or returns something other than
+  a list of strings is reported and the save continues.
+- `User SimpleStartifySessionLoaded` and `SimpleStartifySessionLoadPost` now
+  fire after the load is final, outside the rollback `try`. A hook that threw
+  used to roll back a session that had been sourced whole; it is now reported
+  and the session stays loaded. A load that was rolled back fires neither
+  event.
+- `:SimpleStartifyHealth` gained a REMOTE WORKSPACES block -- whether
+  SimpleRemote is installed, its `g:simpleremote_status`, and why the remote
+  section is empty when it is -- and no longer warns that the remote section is
+  "configured but empty", which was the normal state on any machine without
+  SimpleRemote.
 - `:SimpleStartify` and `:Startify` now honour window-placement command
   modifiers, so `:vertical SimpleStartify`, `:botright SimpleStartify` and
   `:tab SimpleStartify` open the dashboard in their own window instead of
