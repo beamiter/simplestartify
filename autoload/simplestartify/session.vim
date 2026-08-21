@@ -370,6 +370,57 @@ def ExtraLines(): list<string>
   return out
 enddef
 
+# Fold legacy physical continuation lines into the command before embedding it
+# in :execute.  A leading backslash is consumed by the legacy script reader,
+# not by :execute's command parser; leaving it in the string turns a valid
+# multi-line dictionary/list assignment into E15.
+def LogicalLegacyLines(lines: list<string>): list<string>
+  var logical: list<string> = []
+  for line in lines
+    if line =~# '\m^\s*"\\ '
+      # Legacy's "\ comment belongs between physical continuation lines; it
+      # contributes no text and the next backslash still joins the preceding
+      # logical command.
+      continue
+    elseif line =~# '\m^\s*\\'
+      if empty(logical)
+        # Preserve the original failure for a stray continuation rather than
+        # silently attaching it to an unrelated command.
+        add(logical, line)
+      else
+        # The script reader removes only indentation plus the backslash.  Text
+        # after it is exact: `\bar` joins tokens with no space, while `\  bar`
+        # deliberately contributes two.
+        logical[-1] ..= substitute(line, '\m^\s*\\', '', '')
+      endif
+    else
+      add(logical, line)
+    endif
+  endfor
+  return logical
+enddef
+
+# Vim 9.2 writes :mksession files as `vim9script`; older supported Vim builds
+# write legacy script.  The public savecmd/provider contract predates that
+# change and its lines are legacy Ex (SimpleRemote, for example, returns a
+# `let g:...` assignment), which E1126 rejects when appended verbatim to the
+# new file.  Old sessions keep the original physical lines exactly; new ones
+# execute one normalized block in legacy context, preserving multi-line
+# if/for/try bodies and command ordering.
+def AppendExtraLines(path: string, lines: list<string>): bool
+  if empty(lines)
+    return true
+  endif
+  var head = readfile(path, '', 1)
+  var vim9_session = !empty(head) && head[0] ==# 'vim9script'
+  if !vim9_session
+    return writefile(lines, path, 'as') == 0
+  endif
+  var wrapper = 'legacy execute '
+    .. json_encode(join(LogicalLegacyLines(lines), "\n"))
+  return writefile([wrapper], path, 'as') == 0
+enddef
+
 def WritePath(path: string): bool
   if empty(path) || !EnsureDir()
     return false
@@ -390,7 +441,7 @@ def WritePath(path: string): bool
     set sessionoptions-=options
     execute 'silent mksession! ' .. fnameescape(temporary)
     var extra = ExtraLines()
-    if !empty(extra) && writefile(extra, temporary, 'as') != 0
+    if !AppendExtraLines(temporary, extra)
       throw 'cannot append session variables to ' .. temporary
     endif
     if rename(temporary, path) != 0

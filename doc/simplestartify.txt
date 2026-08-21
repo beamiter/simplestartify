@@ -564,13 +564,19 @@ cannot render as text that sources back - is skipped rather than writing a
 session that fails to load.
 
                                          *g:simplestartify_session_savecmds*
-Ex command lines to append to a session verbatim, for example >
+Legacy Ex command lines to append to a session, for example >
 
     let g:simplestartify_session_savecmds = ['SimpleTreeOpen']
 <
 Default [].  Both lists are appended to the temporary file after |:mksession|
 and before it is renamed into place, so a session carrying extra state is
-still replaced atomically.
+still replaced atomically.  Vim versions that generate a `vim9script` session
+run the complete ordered block through |:legacy|, preserving this option's
+legacy Ex syntax and allowing multi-line control structures.  Physical lines
+that begin with a legacy continuation backslash are folded into the command
+before the compatibility block is embedded.  This follows normal legacy line
+continuation; the special literal-backslash behavior of 'cpoptions' flag C is
+not emulated inside a Vim9 session wrapper.
 
                                   *g:simplestartify_session_line_providers*
 Global functions asked, at every save, for extra session lines.  Default: >
@@ -580,8 +586,8 @@ Global functions asked, at every save, for extra session lines.  Default: >
 <
 Each item is the name of a global function, "g:" followed by an identifier;
 other items are discarded during startup normalization.  A provider takes no
-arguments and returns a list of strings, each of which becomes one line of
-the session file; the lines are written after
+arguments and returns a list of legacy Ex strings.  The lines execute together
+as one compatibility block after
 |g:simplestartify_session_savevars| and before
 |g:simplestartify_session_savecmds|, so a savecmd can rely on everything the
 two lists before it restored.

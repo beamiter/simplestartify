@@ -150,6 +150,12 @@ written after the saved variables and before the saved commands. A provider
 that is not defined in this Vim is skipped silently, which is what lets
 SimpleRemote's `g:SimpleRemoteSessionLines` be the zero-config default; one
 that throws or returns something else reports it and the save continues.
+Provider lines and `g:simplestartify_session_savecmds` retain legacy Ex syntax;
+SimpleStartify wraps them as one ordered compatibility block when newer Vim
+versions generate a `vim9script` session file. Legacy leading-backslash line
+continuations are folded into their command before that block is embedded.
+This normalization follows ordinary legacy continuation semantics; it does
+not emulate the special literal-backslash behavior of `'cpoptions'` flag `C`.
 
 Sessions also emit `User SimpleStartifySessionSavePre`/`SavePost` and
 `LoadPre`/`LoadPost`. `SavePre` runs inside the same `try` as the write, so a

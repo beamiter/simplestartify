@@ -486,7 +486,23 @@ assert_true(simplestartify#Health().remote_installed)
 # Session line providers: SimpleRemote's lines land in the session file and
 # source back; a provider that throws, one that returns something other than
 # a list and one that does not exist cost a message each and never the save.
-g:remote_session_lines = ['let g:remote_session_marker = 42']
+g:remote_session_lines = [
+  'let g:remote_session_marker = 42',
+  'let g:remote_continued = {',
+  "\\ 'alpha': 1,",
+  "\\ 'beta': 2",
+  "\\ }",
+  'let g:remote_joined = "foo',
+  "\\bar\"",
+  'let g:remote_spaced = "foo',
+  "\\  bar\"",
+  'let g:remote_commented = [',
+  "\"\\ first entry",
+  "\\ 'first',",
+  "\"\\ second entry",
+  "\\ 'second',",
+  "\\ ]",
+]
 g:simplestartify_session_savevars = ['g:remote_saved_var']
 g:simplestartify_session_savecmds = ['echo "after the rest"']
 g:remote_saved_var = 'kept'
@@ -497,11 +513,19 @@ assert_match('let g:remote_session_marker = 42', written)
 # Variables, then the providers, then the user's own commands: a savecmd can
 # rely on everything the two lists before it restored.
 var session_lines = readfile(TEMP .. '/sessions/remote')
-var at_var = index(session_lines, "let g:remote_saved_var = 'kept'")
-var at_provided = index(session_lines, 'let g:remote_session_marker = 42')
-var at_command = index(session_lines, 'echo "after the rest"')
+var at_var = stridx(written, "let g:remote_saved_var = 'kept'")
+var at_provided = stridx(written, 'let g:remote_session_marker = 42')
+var at_command = stridx(written, 'echo \"after the rest\"')
 assert_true(at_var >= 0 && at_provided > at_var && at_command > at_provided,
   string([at_var, at_provided, at_command]))
+# Vim 9.2 emits a Vim9 session and legacy provider lines therefore need an
+# explicit compatibility context.  Older Vim keeps the original physical
+# command lines, including leading-backslash continuations.
+if session_lines[0] ==# 'vim9script'
+  assert_match('^legacy execute ', session_lines[-1])
+else
+  assert_true(index(session_lines, "\\ 'alpha': 1,") >= 0)
+endif
 g:simplestartify_session_savevars = []
 g:simplestartify_session_savecmds = []
 def g:ThrowingProvider(): list<string>
@@ -535,9 +559,18 @@ augroup RemoteSessionHooks
   autocmd User SimpleStartifySessionLoaded add(g:hooks, 'loaded')
   autocmd User SimpleStartifySessionLoadPost add(g:hooks, 'post') | throw 'hook broke'
 augroup END
-unlet! g:remote_session_marker
+unlet! g:remote_session_marker g:remote_continued g:remote_joined
+unlet! g:remote_spaced g:remote_commented
 noise = execute('call simplestartify#session#Load(false, "remote")')
 assert_equal(42, get(g:, 'remote_session_marker', 0))
+assert_equal({alpha: 1, beta: 2}, get(g:, 'remote_continued', {}),
+  'legacy continuation lines survive the Vim9 session wrapper')
+assert_equal('foobar', get(g:, 'remote_joined', ''),
+  'a continuation without a space joins tokens exactly')
+assert_equal('foo  bar', get(g:, 'remote_spaced', ''),
+  'spaces after the continuation backslash are preserved')
+assert_equal(['first', 'second'], get(g:, 'remote_commented', []),
+  'legacy continuation comments neither execute nor capture following lines')
 assert_equal(TEMP .. '/sessions/remote', v:this_session)
 assert_equal(['loaded', 'post'], g:hooks)
 assert_match('session load hook failed', noise)
