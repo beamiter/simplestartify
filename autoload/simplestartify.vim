@@ -662,6 +662,33 @@ def IsDashboard(): bool
   return get(b:, 'simplestartify', 0) == 1 && &filetype ==# 'startify'
 enddef
 
+# A dashboard is normally a transient placeholder: if some other command or
+# plugin puts a buffer beside it, keeping the start screen around only spends
+# a window.  Dashboard actions are the exception.  Their split/tab mappings
+# explicitly ask to keep the dashboard available, so the synchronous
+# BufWinEnter raised by those actions is ignored.
+var keep_dashboard = 0
+
+export def CloseIfOtherBuffer()
+  if keep_dashboard > 0 || IsDashboard()
+    return
+  endif
+  var dashboards: list<number> = []
+  for info in getwininfo()
+    if info.tabnr == tabpagenr()
+          \ && getbufvar(info.bufnr, 'simplestartify', 0) == 1
+          \ && getbufvar(info.bufnr, '&filetype') ==# 'startify'
+      add(dashboards, info.winid)
+    endif
+  endfor
+  for winid in dashboards
+    # The current non-dashboard window means there is somewhere safe to land.
+    # A preceding close may have invalidated a duplicate id, hence silent!
+    # rather than turning a harmless race into an autocmd error.
+    win_execute(winid, 'silent! close')
+  endfor
+enddef
+
 # The narrowest window showing the buffer wins: the same lines are on screen
 # in all of them, so anything wider would overflow somewhere.
 def BufferWidth(buffer: number): number
@@ -1003,6 +1030,7 @@ export def Open(requested: string = '', mods: string = '')
   endif
   if !empty(placement)
     var origin = bufnr()
+    keep_dashboard += 1
     try
       execute placement .. ' new'
     catch
@@ -1010,6 +1038,8 @@ export def Open(requested: string = '', mods: string = '')
       # command that appeared to do nothing.
       Notify('cannot open a window there: ' .. v:exception, true)
       return
+    finally
+      keep_dashboard -= 1
     endtry
     ConfigureBuffer(origin)
   elseif !IsDashboard()
@@ -1078,8 +1108,12 @@ enddef
 # BufDelete fires while the buffer is still being taken apart, and opening a
 # buffer from inside that is how plugins corrupt window state.  Hand the work
 # to the main loop instead; a Vim without +timers simply does not get this.
-export def ScheduleReopen()
-  if !Flag('simplestartify_reopen_on_empty', 0) || !exists('*timer_start')
+export def ScheduleReopen(buffer: number = 0)
+  # Wiping the transient dashboard is the desired result of opening another
+  # buffer, never a reason to schedule the dashboard straight back again.
+  if (buffer > 0 && getbufvar(buffer, 'simplestartify', 0) == 1)
+        \ || !Flag('simplestartify_reopen_on_empty', 0)
+        \ || !exists('*timer_start')
     return
   endif
   timer_start(0, (_) => ReopenIfEmpty())
@@ -1516,6 +1550,23 @@ def Run(action: dict<any>, verb: string)
   endif
 enddef
 
+def RunFromDashboard(action: dict<any>, verb: string)
+  # A split or tab verb is an explicit request to keep the dashboard next to
+  # the action's destination.  Protect only the synchronous window events it
+  # causes; buffers opened later by unrelated work remain eligible to dismiss
+  # the dashboard.
+  if verb ==# 'edit'
+    Run(action, verb)
+    return
+  endif
+  keep_dashboard += 1
+  try
+    Run(action, verb)
+  finally
+    keep_dashboard -= 1
+  endtry
+enddef
+
 export def Activate(requested_verb: string = '')
   if !IsDashboard()
     return
@@ -1539,7 +1590,7 @@ export def Activate(requested_verb: string = '')
     endif
   endif
   if !empty(action)
-    Run(action, verb)
+    RunFromDashboard(action, verb)
   endif
 enddef
 
@@ -1551,7 +1602,7 @@ export def ActivateKey(key: string, requested_verb: string = '')
   for [lnum, action] in items(get(b:, 'simplestartify_actions', {}))
     if get(action, 'key', '') ==# key
       cursor(str2nr(lnum), 1)
-      Run(action, verb)
+      RunFromDashboard(action, verb)
       return
     endif
   endfor

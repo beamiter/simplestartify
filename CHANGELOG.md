@@ -4,6 +4,9 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- A dashboard now closes automatically when another command or plugin displays
+  a buffer beside it, instead of lingering as one half of the split. The
+  dashboard's own `s`, `v` and `t` actions still keep it open intentionally.
 - Six new dashboard layouts join the random deck: `blocks` draws the banner
   in a pixel-block font, `shadow` gives that banner a drop shadow, `neon`
   frames it in double rules and `heavy` in heavy ones, `retro` rounds the

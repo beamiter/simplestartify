@@ -299,6 +299,10 @@ that are not about placement are ignored rather than passed on: `noautocmd`
 would suppress the `FileType` event the dashboard is set up by. `q` in such a
 window closes that window; only a dashboard that is alone quits Vim, and it
 refuses -- naming the buffers -- while anything listed is modified.
+If another command or plugin later displays a buffer beside a dashboard, the
+dashboard window closes automatically instead of lingering in the split. The
+dashboard's own `s`, `v` and `t` actions are intentional exceptions and keep
+it available for opening several entries.
 `g:simplestartify_reopen_on_empty` brings the dashboard back when the last
 named buffer is deleted, instead of leaving you on an empty `[No Name]`.
 

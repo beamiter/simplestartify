@@ -113,6 +113,11 @@ session ignores the split verbs because loading one replaces the whole
 layout.  "s", "t" and "v" are never handed out as session shortcuts, so a
 session can never silently take one of them over.
 
+A buffer displayed in a new window by another command or plugin automatically
+closes dashboards in that tab, rather than leaving the start screen to occupy
+a split.  The dashboard's own split and tab actions are intentional
+exceptions: they keep it available so another entry can be opened from it.
+
 FILTERING                                          *simplestartify-filter*
 
 "/" and CTRL-F narrow the dashboard as you type.  Each keystroke re-draws from

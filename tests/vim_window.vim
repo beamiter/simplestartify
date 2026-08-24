@@ -89,13 +89,38 @@ silent SimpleStartify minimal
 assert_equal(1, winnr('$'))
 assert_equal('startify', &filetype)
 
+# A buffer displayed by another command dismisses the dashboard instead of
+# leaving a start screen to occupy the other half of the split.
+only
+enew!
+SimpleStartify minimal
+var dashboard = bufnr()
+execute 'split ' .. fnameescape(NOTE)
+assert_equal(1, winnr('$'))
+assert_false(bufexists(dashboard))
+assert_equal(fnamemodify(NOTE, ':p'), expand('%:p'))
+
+# An unnamed :new buffer counts too: the useful distinction is between the
+# transient dashboard and any buffer the user chose to display, not whether
+# that buffer has acquired a filename yet.
+SimpleStartify minimal
+dashboard = bufnr()
+g:simplestartify_reopen_on_empty = 1
+var timers_before_new = len(timer_info())
+new
+assert_equal(1, winnr('$'))
+assert_false(bufexists(dashboard))
+assert_equal('', bufname())
+assert_equal(timers_before_new, len(timer_info()))
+g:simplestartify_reopen_on_empty = 0
+
 # The quit entry in a split closes that window.  It used to run a bare :quit,
 # which is the same thing here but means "leave Vim" the moment the dashboard
 # is alone - and the entry is offered as a way out of the dashboard.
 only
 execute 'edit ' .. fnameescape(NOTE)
 vertical SimpleStartify minimal
-var dashboard = bufnr()
+dashboard = bufnr()
 var quit_key = ActionKey('quit')
 assert_notequal('', quit_key)
 simplestartify#ActivateKey(quit_key)

@@ -90,7 +90,9 @@ assert_equal('retro', b:simplestartify_style)
 # shrinks is usually not the focused one.  Assert from the *other* window: the
 # dashboard is 'nowrap', so a missed reflow chops every line mid-glyph.
 var dashboard = bufnr()
-vertical new
+# This test needs an intentionally persistent dashboard split; ordinary new
+# buffers now dismiss the transient dashboard before Reflow() has work to do.
+noautocmd vertical new
 vertical resize 62
 var dashboard_width = getwininfo(bufwinid(dashboard))[0].width
 assert_true(dashboard_width > 0 && dashboard_width < 40, 'width ' .. dashboard_width)

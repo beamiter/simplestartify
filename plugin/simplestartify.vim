@@ -430,10 +430,16 @@ augroup SimpleStartify
   # Session.vim and take the buffer that :lcd was following with it.  Loading
   # a whole workspace is a response to `:cd`, not to one window retargeting.
   autocmd DirChanged global call simplestartify#session#Autoload()
+  # The dashboard is a transient placeholder.  If another command or plugin
+  # displays a buffer beside it, discard the dashboard instead of spending a
+  # split on both.  Its own s/v/t actions suppress this while opening the
+  # destination they explicitly asked to keep beside it.
+  autocmd BufWinEnter * call simplestartify#CloseIfOtherBuffer()
   autocmd BufWinEnter,BufWritePost * call simplestartify#mru#Touch()
   # Only with g:simplestartify_reopen_on_empty; the handler returns before it
   # allocates a timer otherwise.
-  autocmd BufDelete,BufWipeout * call simplestartify#ScheduleReopen()
+  autocmd BufDelete,BufWipeout *
+        \ call simplestartify#ScheduleReopen(str2nr(expand('<abuf>')))
   # Registered before the session hook so a failing recent-files write can
   # never cost the user their session; mru#Save() swallows its own errors.
   autocmd VimLeavePre * call simplestartify#mru#Save()
