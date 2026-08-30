@@ -270,6 +270,16 @@ All notable changes to SimpleStartify are documented here.
   path in the record to find one of them, which cost 0.96 ms per opened file
   at a cap of 4096 -- on every quickfix jump. A plain scan is 3 to 7 times
   quicker at a raised cap and free for a file at the front of the record.
+- Fixed forgetting a recent file running its name through `expand()`. That is
+  a wildcard, environment-variable, `%`/`#`-special and backtick expander, not
+  a path normaliser, and both `:SimpleStartifyForget` and `D` on the dashboard
+  applied it to a path taken straight out of the recent-files record -- twice,
+  once in each half. A file honestly named `lit$HOME.txt` was rewritten into a
+  path that matches no entry, so it was reported as "not a recent file"
+  forever and never left the dashboard; a file whose name contains backticks
+  had the enclosed text run through the shell. Both now use
+  `fnamemodify(':p')`, which is what opening a file has always used, and which
+  still resolves `~` and relative names.
 
 ## 0.1.0 - 2026-08-07
 

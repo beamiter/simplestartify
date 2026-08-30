@@ -777,7 +777,10 @@ been recorded yet, not because of a failure.
         silently succeeding.  The removal also survives every cache write,
         each of which re-reads the cache before rewriting it: a forgotten path
         is never merged back in, and only opening the file again records it
-        once more.  See |simplestartify-recent|.
+        once more.  [path] is a file name and not an expression: only "~" and
+        relative names are resolved, so a file whose name contains "$VAR", a
+        wildcard or backticks is matched exactly as it is called.  See
+        |simplestartify-recent|.
 
                                                                *:Startify*
 :Startify

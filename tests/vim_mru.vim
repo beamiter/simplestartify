@@ -219,6 +219,70 @@ writefile(many, CACHE)
 assert_equal(5000, simplestartify#mru#Count())
 g:simplestartify_mru_max = 200
 
+# A recorded path is data, never an expression.  expand() is a wildcard,
+# environment-variable, %/#-special *and* backtick expander rather than a path
+# normaliser, and both halves of the forget path used to run it: ForgetRecent()
+# over whatever b:simplestartify_actions holds under the cursor, then
+# mru#Forget() over the very same string a second time.  So a file honestly
+# named `lit$HOME.txt` was rewritten into a path that is in no record, reported
+# as "not a recent file" forever and never left the dashboard - and a file
+# whose name contains backticks had the enclosed text run through the shell,
+# twice, for the crime of having D pressed on it.  Touch() records
+# expand('%:p'), which keeps both names verbatim, so verbatim is what the
+# forget side has to match.
+const LITERAL = TEMP .. '/lit$HOME.txt'
+const SHELLY = TEMP .. '/note`touch pwned`.md'
+writefile(['x'], LITERAL)
+writefile(['x'], SHELLY)
+delete(CACHE)
+execute 'edit ' .. fnameescape(LITERAL)
+execute 'edit ' .. fnameescape(SHELLY)
+assert_equal(SHELLY, expand('%:p'))
+assert_equal(0, index(simplestartify#mru#List(), SHELLY))
+assert_equal(1, index(simplestartify#mru#List(), LITERAL))
+
+# The working directory is the fixture for the rest of this block, so a shell
+# that does run leaves its evidence there rather than in the checkout.
+execute 'lcd ' .. fnameescape(TEMP)
+
+# Pressing D on the dashboard, which is where the dangerous half arrives: the
+# path comes straight out of the record and nothing may execute it.
+SimpleStartify minimal
+var forget_line = 0
+for [lnum, action] in items(b:simplestartify_actions)
+  if get(action, 'path', '') ==# SHELLY
+    forget_line = str2nr(lnum)
+  endif
+endfor
+assert_notequal(0, forget_line)
+cursor(forget_line, 1)
+simplestartify#ForgetRecent()
+assert_false(filereadable(TEMP .. '/pwned'))
+assert_equal(-1, index(simplestartify#mru#List(), SHELLY))
+
+# And the named form, which is the functional half: a literal $VAR in a file
+# name has to survive, or that entry can never be forgotten at all.
+simplestartify#ForgetRecent(LITERAL)
+assert_equal(-1, index(simplestartify#mru#List(), LITERAL))
+
+# mru#Forget() performed the second expansion of its own, so it is asserted on
+# its own rather than only through the caller above.
+execute 'edit ' .. fnameescape(SHELLY)
+assert_equal(0, index(simplestartify#mru#List(), SHELLY))
+assert_true(simplestartify#mru#Forget(SHELLY))
+assert_false(filereadable(TEMP .. '/pwned'))
+assert_equal(-1, index(simplestartify#mru#List(), SHELLY))
+
+# What fnamemodify(':p') still does, and the only thing expand() was ever
+# wanted for here: a relative name resolves against the working directory, so
+# a hand-typed :SimpleStartifyForget argument keeps working.
+const RELATIVE = TEMP .. '/relative.txt'
+writefile(['x'], RELATIVE)
+execute 'edit ' .. fnameescape(RELATIVE)
+assert_equal(0, index(simplestartify#mru#List(), RELATIVE))
+assert_true(simplestartify#mru#Forget('relative.txt'))
+assert_equal(-1, index(simplestartify#mru#List(), RELATIVE))
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

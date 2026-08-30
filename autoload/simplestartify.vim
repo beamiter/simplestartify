@@ -1717,7 +1717,15 @@ export def ForgetRecent(requested: string = '')
     endif
     path = get(action, 'path', '')
   endif
-  var absolute = fnamemodify(expand(path), ':p')
+  # No expand() on a file name.  It is a wildcard, environment-variable,
+  # %/#-special and backtick expander, not a path normaliser, and pressing D
+  # feeds it a path taken straight out of the recent-files record - so a file
+  # legitimately called `lit$HOME.txt` became a path that matches no entry and
+  # could never be forgotten, and a name containing backticks had the enclosed
+  # text run through the shell.  fnamemodify(':p') resolves '~' and relative
+  # names, which is all a recorded path or a completed :SimpleStartifyForget
+  # argument ever needs.  OpenFile() has always spelled it this way.
+  var absolute = fnamemodify(path, ':p')
   if !simplestartify#mru#Forget(absolute)
     Notify('not a recent file: ' .. DisplayPath(absolute), true)
     return

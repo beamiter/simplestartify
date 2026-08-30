@@ -331,7 +331,14 @@ export def Forget(requested: string): bool
   if empty(requested)
     return false
   endif
-  var path = fnamemodify(expand(requested), ':p')
+  # No expand() on a file name, for the same reason ForgetRecent() does not
+  # use one: it is a wildcard, environment-variable, %/#-special and backtick
+  # expander, so a recorded file called `lit$HOME.txt` resolved to a path that
+  # is in no record and stayed on the dashboard forever, and one whose name
+  # contains backticks ran the enclosed text through the shell.  Record() and
+  # Touch() store what expand('%:p') gave them, verbatim; fnamemodify(':p')
+  # resolves '~' and relative names and matches that.
+  var path = fnamemodify(requested, ':p')
   var before = len(entries)
   filter(entries, (_, entry) => entry.path !=# path)
   var dropped = len(entries) != before
