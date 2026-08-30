@@ -515,7 +515,11 @@ assert_match('let g:remote_session_marker = 42', written)
 var session_lines = readfile(TEMP .. '/sessions/remote')
 var at_var = stridx(written, "let g:remote_saved_var = 'kept'")
 var at_provided = stridx(written, 'let g:remote_session_marker = 42')
-var at_command = stridx(written, 'echo \"after the rest\"')
+# Vim 9.2 JSON-encodes the block inside `legacy execute`, hence the physical
+# backslashes.  Vim 9.1 appends the legacy command itself and has none.
+var command_needle = session_lines[0] ==# 'vim9script'
+  ? 'echo \"after the rest\"' : 'echo "after the rest"'
+var at_command = stridx(written, command_needle)
 assert_true(at_var >= 0 && at_provided > at_var && at_command > at_provided,
   string([at_var, at_provided, at_command]))
 # Vim 9.2 emits a Vim9 session and legacy provider lines therefore need an
