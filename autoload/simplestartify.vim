@@ -60,7 +60,7 @@ def Count(name: string, fallback: number, maximum: number): number
 enddef
 
 def CleanLabel(text: string): string
-  return substitute(text, '[\r\n\t]', ' ', 'g')
+  return substitute(text, '\m[\r\n\t]', ' ', 'g')
 enddef
 
 def DisplayPath(path: string): string
@@ -370,7 +370,7 @@ enddef
 # workspace entries so the two read alike, and falls back to the URI when no
 # workspace was named.
 def RemoteBookmarkEntry(item: dict<any>, target: string, key: string): dict<any>
-  var remote = substitute(strpart(target, len('remote://')), '\(.\)/\+$', '\1', '')
+  var remote = substitute(strpart(target, len('remote://')), '\m\(.\)/\+$', '\1', '')
   # plugin/ validated this once, but the option can be assigned after startup
   # and the model must not throw over a value it did not vet.
   var configured: any = get(item, 'workspace', {})
@@ -448,11 +448,11 @@ def CommandEntries(limit: number, letters: list<string>): list<dict<any>>
       label = get(item, 'label', command)
       key = get(item, 'key', '')
     elseif type(item) == v:t_string
-      command = trim(substitute(item, '^\s*:\+', '', ''))
+      command = trim(substitute(item, '\m^\s*:\+', '', ''))
       label = command
     elseif type(item) == v:t_list && len(item) == 2 && type(item[0]) == v:t_string
       command = type(item[1]) == v:t_string
-        ? trim(substitute(item[1], '^\s*:\+', '', '')) : ''
+        ? trim(substitute(item[1], '\m^\s*:\+', '', '')) : ''
       label = empty(trim(item[0])) ? command : trim(item[0])
     endif
     if type(command) != v:t_string || empty(command)
