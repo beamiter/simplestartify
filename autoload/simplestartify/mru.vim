@@ -79,7 +79,7 @@ export def File(): string
   if type(value) != v:t_string || empty(value)
     return ''
   endif
-  return fnamemodify(expand(value), ':p')
+  return fnamemodify(value, ':p')
 enddef
 
 def Persisting(): bool

@@ -4,6 +4,13 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- 启动后把 `g:simplestartify_lists` 写成文档里的字符串形式（`['files', 'special']`）不再被当成空配置退回默认牌组；书签和命令的字符串写法同样在运行时生效。
+- 绘制仪表盘时不再用 `expand()` 去解析会话目录、最近文件缓存路径和书签路径，带反引号的名字不会再进 shell。
+- `v:oldfiles` 里一长串 `remote://` 不再被 `:p` 展开后占满拒绝预算，把真正的本地文件挤出最近列表。
+- `g:simpleremote_workspace` 里的数字 kind/target 不再让 `IsConnected()` 在每次绘制时抛 `E1030`。
+- `g:simplestartify_reopen_on_empty` 对连续 `BufDelete` 只保留一个定时器，而不是每个被删缓冲区各挂一个。
+- `:SimpleStartifyHealth` 把数字形式的 `g:simpleremote_status` 按原样报出，而不再谎称 `disconnected`。
+
 - A dashboard now closes automatically when another command or plugin displays
   a buffer beside it, instead of lingering as one half of the split. The
   dashboard's own `s`, `v` and `t` actions still keep it open intentionally.

@@ -18,7 +18,7 @@ export def Dir(): string
   if type(configured) != v:t_string || empty(configured)
     return ''
   endif
-  var path = fnamemodify(expand(configured), ':p')
+  var path = fnamemodify(configured, ':p')
   path = substitute(path, '[\\/]\+$', '', '')
   if empty(path) || path ==# '/' || path !~# '^\%(/\|[A-Za-z]:[\\/]\)'
     return ''

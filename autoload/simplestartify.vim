@@ -108,6 +108,12 @@ def RecentCandidates(): list<string>
     if type(candidate) != v:t_string || empty(candidate)
       continue
     endif
+    # Scheme paths are not local files.  :p would expand them under getcwd()
+    # and a long v:oldfiles of remote:// entries spent the whole reject
+    # budget, hiding every real file behind them.
+    if candidate =~# '^[A-Za-z][A-Za-z0-9+.-]*://'
+      continue
+    endif
     var path = fnamemodify(candidate, ':p')
     # Marked before the verdict, not after it: the two lists overlap heavily -
     # the same file is usually in both - so remembering that a path has been
@@ -227,9 +233,15 @@ def IsConnected(spec: dict<any>, workspace: dict<any>): bool
     return false
   endif
   var root = get(spec, 'root', '')
-  return get(spec, 'kind', '') ==# get(workspace, 'kind', '')
-        \ && get(spec, 'target', '') ==# get(workspace, 'target', '')
-        \ && (empty(root) || root ==# get(workspace, 'root', ''))
+  # Workspace fields come from another plugin's global and are not normalized
+  # here: a numeric kind used to throw E1030 out of every dashboard draw.
+  return AsText(get(spec, 'kind', '')) ==# AsText(get(workspace, 'kind', ''))
+        \ && AsText(get(spec, 'target', '')) ==# AsText(get(workspace, 'target', ''))
+        \ && (empty(AsText(root)) || AsText(root) ==# AsText(get(workspace, 'root', '')))
+enddef
+
+def AsText(value: any): string
+  return type(value) == v:t_string ? value : string(value)
 enddef
 
 # What SimpleRemote hands out is data from another plugin: a missing function,
@@ -380,27 +392,34 @@ enddef
 
 def BookmarkEntries(limit: number, letters: list<string>): list<dict<any>>
   var out: list<dict<any>> = []
-  for item in Configured('simplestartify_bookmarks')
+  var value = get(g:, 'simplestartify_bookmarks', [])
+  if type(value) != v:t_list
+    return out
+  endif
+  for item in value
     if len(out) >= limit
       break
     endif
-    var target = get(item, 'path', '')
+    var target: any = ''
+    var pinned: any = ''
+    if type(item) == v:t_string
+      target = item
+    elseif type(item) == v:t_dict
+      target = get(item, 'path', '')
+      pinned = get(item, 'key', '')
+    else
+      continue
+    endif
     if type(target) != v:t_string || empty(target)
       continue
     endif
-    var pinned = get(item, 'key', '')
     var key = type(pinned) == v:t_string && !empty(pinned) ? pinned : TakeKey(letters)
-    # Any remote:// target, not only a well-formed remote:///absolute one: a
-    # malformed URI is SimpleRemote's to refuse when the bookmark is opened,
-    # and expanding it into a local path under the working directory - which
-    # is what the branch below would do - is never what was meant.
     if target =~# '^remote://'
-      add(out, RemoteBookmarkEntry(item, target, key))
+      add(out, RemoteBookmarkEntry(
+        type(item) == v:t_dict ? item : {path: target}, target, key))
       continue
     endif
-    # A bookmark is shown whether or not the target exists yet: it is a place
-    # the user asked to keep, and opening a missing one creates the buffer.
-    var path = substitute(fnamemodify(expand(target), ':p'), '[\\/]\+$', '', '')
+    var path = substitute(fnamemodify(target, ':p'), '[\\/]\+$', '', '')
     add(out, {
       key: key,
       kind: 'bookmark',
@@ -413,19 +432,36 @@ enddef
 
 def CommandEntries(limit: number, letters: list<string>): list<dict<any>>
   var out: list<dict<any>> = []
-  for item in Configured('simplestartify_commands')
+  var value = get(g:, 'simplestartify_commands', [])
+  if type(value) != v:t_list
+    return out
+  endif
+  for item in value
     if len(out) >= limit
       break
     endif
-    var command = get(item, 'command', '')
+    var command = ''
+    var label = ''
+    var key: any = ''
+    if type(item) == v:t_dict
+      command = get(item, 'command', '')
+      label = get(item, 'label', command)
+      key = get(item, 'key', '')
+    elseif type(item) == v:t_string
+      command = trim(substitute(item, '^\s*:\+', '', ''))
+      label = command
+    elseif type(item) == v:t_list && len(item) == 2 && type(item[0]) == v:t_string
+      command = type(item[1]) == v:t_string
+        ? trim(substitute(item[1], '^\s*:\+', '', '')) : ''
+      label = empty(trim(item[0])) ? command : trim(item[0])
+    endif
     if type(command) != v:t_string || empty(command)
       continue
     endif
-    var key = get(item, 'key', '')
     add(out, {
       key: type(key) == v:t_string && !empty(key) ? key : TakeKey(letters),
       kind: 'command',
-      label: CleanLabel(get(item, 'label', command)),
+      label: CleanLabel(label),
       command: command,
     })
   endfor
@@ -494,8 +530,22 @@ def Lists(): list<dict<any>>
   if type(value) != v:t_list
     return deepcopy(FALLBACK_LISTS)
   endif
-  var specs = filter(copy(value), (_, spec) => type(spec) == v:t_dict
-        \ && has_key(SECTION_NAMES, get(spec, 'type', '')))
+  var specs: list<dict<any>> = []
+  for item in value
+    var spec: dict<any> = {}
+    if type(item) == v:t_string
+      spec = {type: item}
+    elseif type(item) == v:t_dict
+      spec = copy(item)
+    else
+      continue
+    endif
+    var kind = get(spec, 'type', '')
+    if type(kind) != v:t_string || !has_key(SECTION_NAMES, kind)
+      continue
+    endif
+    add(specs, spec)
+  endfor
   # plugin/ restores the defaults for a list that normalizes to nothing, but a
   # value assigned after startup skips that; a dashboard with no sections at
   # all is never what the assignment meant.
@@ -1108,6 +1158,13 @@ enddef
 # BufDelete fires while the buffer is still being taken apart, and opening a
 # buffer from inside that is how plugins corrupt window state.  Hand the work
 # to the main loop instead; a Vim without +timers simply does not get this.
+var reopen_timer = 0
+
+def ReopenTick(_: any)
+  reopen_timer = 0
+  ReopenIfEmpty()
+enddef
+
 export def ScheduleReopen(buffer: number = 0)
   # Wiping the transient dashboard is the desired result of opening another
   # buffer, never a reason to schedule the dashboard straight back again.
@@ -1116,7 +1173,11 @@ export def ScheduleReopen(buffer: number = 0)
         \ || !exists('*timer_start')
     return
   endif
-  timer_start(0, (_) => ReopenIfEmpty())
+  if reopen_timer > 0
+    timer_stop(reopen_timer)
+    reopen_timer = 0
+  endif
+  reopen_timer = timer_start(0, ReopenTick)
 enddef
 
 export def Refresh()
@@ -1919,7 +1980,13 @@ enddef
 
 def RemoteStatus(): string
   var status = get(g:, 'simpleremote_status', 'disconnected')
-  return type(status) == v:t_string && !empty(status) ? status : 'disconnected'
+  if type(status) == v:t_string && !empty(status)
+    return status
+  endif
+  if type(status) == v:t_number
+    return string(status)
+  endif
+  return 'disconnected'
 enddef
 
 export def Health(): dict<any>

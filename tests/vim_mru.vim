@@ -283,6 +283,29 @@ assert_equal(0, index(simplestartify#mru#List(), RELATIVE))
 assert_true(simplestartify#mru#Forget('relative.txt'))
 assert_equal(-1, index(simplestartify#mru#List(), RELATIVE))
 
+# remote:// entries in v:oldfiles used to be :p-expanded and counted against
+# the reject budget, so a long remote history hid every local file behind it.
+const URI_LIVE = TEMP .. '/uri-live.txt'
+writefile(['x'], URI_LIVE)
+var uris: list<string> = []
+for index in range(450)
+  add(uris, 'remote:///nowhere/' .. index)
+endfor
+v:oldfiles = uris + [URI_LIVE]
+SimpleStartify minimal
+var uri_files = filter(values(get(b:, 'simplestartify_actions', {})),
+  (_, action) => get(action, 'kind', '') ==# 'file')
+assert_true(!empty(filter(copy(uri_files), (_, action) => action.path ==# URI_LIVE)),
+  'a remote:// oldfiles prefix hid the local file behind it')
+v:oldfiles = []
+
+# mru#File() used expand(), so a cache path with backticks ran the shell.
+const PWNMRU = TEMP .. '/pwned-mru'
+g:simplestartify_mru_file = '`touch ' .. PWNMRU .. '`'
+simplestartify#mru#File()
+assert_false(filereadable(PWNMRU), 'mru#File() ran a backtick expansion')
+g:simplestartify_mru_file = CACHE
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

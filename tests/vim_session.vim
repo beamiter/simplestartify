@@ -214,6 +214,15 @@ assert_false(simplestartify#session#Delete(false, 'work'))
 assert_true(simplestartify#session#Delete(true, 'work'))
 assert_false(filereadable(session_path))
 
+# session#Dir() used expand(), so a directory with backticks ran the shell
+# the first time anything asked where sessions live.
+const PWNSESS = TEMP .. '/pwned-session-dir'
+var saved_dir = g:simplestartify_session_dir
+g:simplestartify_session_dir = '`touch ' .. PWNSESS .. '`'
+simplestartify#session#Dir()
+assert_false(filereadable(PWNSESS), 'session#Dir() ran a backtick expansion')
+g:simplestartify_session_dir = saved_dir
+
 g:simplestartify_session_persistence = 0
 v:this_session = ''
 delete(TEMP, 'rf')

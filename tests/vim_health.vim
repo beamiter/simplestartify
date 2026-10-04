@@ -107,6 +107,11 @@ assert_match('SimpleStartify health', getline(1))
 assert_match('SESSIONS', join(getline(1, '$'), "\n"))
 bwipeout!
 
+# A numeric SimpleRemote status used to be reported as "disconnected".
+g:simpleremote_status = 3
+assert_equal('3', simplestartify#Health().remote_status)
+unlet g:simpleremote_status
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

@@ -586,6 +586,16 @@ assert_false(simplestartify#session#Load(false, 'broken'))
 assert_equal([], g:hooks)
 autocmd! RemoteSessionHooks
 
+# A numeric kind/target on the live workspace used to throw E1030 from
+# IsConnected() while drawing the remote section.
+g:simpleremote_workspace = {id: 1, kind: 7, target: 9, root: '/srv/app'}
+try
+  SimpleStartify minimal
+catch
+  assert_report('dashboard threw over a typed workspace: ' .. v:exception)
+endtry
+unlet! g:simpleremote_workspace
+
 v:this_session = ''
 delete(TEMP, 'rf')
 if !empty(v:errors)

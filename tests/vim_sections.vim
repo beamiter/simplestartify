@@ -416,6 +416,36 @@ g:simplestartify_skiplist = []
 v:oldfiles = []
 g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
 
+# plugin/ accepts the documented string form; Lists() after startup dropped
+# every string, so assigning ['files', 'special'] silently restored the
+# fallback deck (including sessions the user did not ask for).
+g:simplestartify_lists = ['files', 'special']
+SimpleStartify minimal
+assert_equal(['files', 'special'], Ids())
+g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+
+# The same post-startup gap: a string bookmark or command is what plugin/
+# normalized at load, and Configured() then dropped every non-dict.
+g:simplestartify_bookmarks = [PIN]
+g:simplestartify_commands = ['TestHit']
+g:simplestartify_lists = [{type: 'bookmarks'}, {type: 'commands'}, {type: 'special'}]
+SimpleStartify minimal
+assert_true(index(Paths('bookmarks'), PIN) >= 0, string(Paths('bookmarks')))
+assert_equal('commands', get(Section('commands'), 'id', ''))
+assert_true(len(get(Section('commands'), 'entries', [])) >= 1)
+g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+g:simplestartify_bookmarks = []
+g:simplestartify_commands = []
+
+# Drawing a bookmark used expand(), so a path with backticks ran the shell.
+const PWNBOOK = TEMP .. '/pwned-bookmark'
+g:simplestartify_bookmarks = ['`touch ' .. PWNBOOK .. '`']
+g:simplestartify_lists = [{type: 'bookmarks'}, {type: 'special'}]
+SimpleStartify minimal
+assert_false(filereadable(PWNBOOK), 'drawing a bookmark ran a backtick expansion')
+g:simplestartify_bookmarks = []
+g:simplestartify_lists = [{type: 'files'}, {type: 'sessions'}, {type: 'special'}]
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)

@@ -210,6 +210,21 @@ var timers = len(timer_info())
 simplestartify#ScheduleReopen()
 assert_equal(timers, len(timer_info()))
 
+# Reopen used to arm a fresh timer on every BufDelete, so wiping a handful of
+# buffers left a pile of identical callbacks. One window is enough.
+g:simplestartify_reopen_on_empty = 1
+simplestartify#ScheduleReopen()
+simplestartify#ScheduleReopen()
+simplestartify#ScheduleReopen()
+var reopen_timers = 0
+for info in timer_info()
+  if string(get(info, 'callback', '')) =~# 'ReopenTick'
+    reopen_timers += 1
+  endif
+endfor
+assert_equal(1, reopen_timers, 'ScheduleReopen() stacked a timer per call')
+g:simplestartify_reopen_on_empty = 0
+
 execute 'lcd ' .. fnameescape(ROOT)
 delete(TEMP, 'rf')
 if !empty(v:errors)
