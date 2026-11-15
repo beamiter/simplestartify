@@ -69,6 +69,29 @@ writefile([], TEMP .. '/sessions/work')
 execute 'edit ' .. fnameescape(TEMP .. '/sessions/work')
 assert_equal([ALPHA, BETA], simplestartify#mru#List())
 
+# One invalid runtime regex must not disable valid exclusion rules after it.
+# These paths must never be newly recorded or persisted, even though their
+# ordinary file buffers are entered through the real autocmd path.
+var saved_skiplist = copy(g:simplestartify_skiplist)
+const PRIVATE = TEMP .. '/excluded.private'
+writefile(['private fixture'], PRIVATE)
+for patterns in [['\(', '\.private$'], ['\.private$', '\('],
+    ['\(', 42, '', '\)', '\.private$']]
+  g:simplestartify_skiplist = patterns
+  assert_true(simplestartify#mru#Skipped(PRIVATE), 'invalid regex hid a valid rule')
+  assert_false(simplestartify#mru#Skipped(ALPHA), 'invalid regex excluded all files')
+  execute 'edit ' .. fnameescape(PRIVATE)
+  simplestartify#mru#Touch()
+  assert_equal(-1, index(simplestartify#mru#List(), PRIVATE),
+    'excluded runtime path entered the MRU list')
+  assert_true(simplestartify#mru#Save())
+  assert_equal([], filter(readfile(CACHE), (_, value) => stridx(value, PRIVATE) >= 0),
+    'excluded runtime path was persisted')
+  # Remove the old implementation's leaked entry to isolate each ordering.
+  simplestartify#mru#Forget(PRIVATE)
+endfor
+g:simplestartify_skiplist = saved_skiplist
+
 # :SimpleStartifyForget drops an entry, and reports an unknown path instead of
 # pretending to have done something.
 execute 'SimpleStartifyForget ' .. fnameescape(BETA)

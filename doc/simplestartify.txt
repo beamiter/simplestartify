@@ -499,6 +499,8 @@ both when a buffer is recorded and when the dashboard is drawn, so adding a
 pattern also hides paths recorded earlier and paths from |v:oldfiles|.  An
 empty list is honoured and skips nothing; a pattern that does not compile is
 dropped during startup normalization rather than throwing on every draw.
+If the list is changed later, invalid patterns are ignored individually;
+valid exclusions after an invalid pattern still apply.
 Matching one of these patterns costs a draw the same budget as a path that no
 longer exists, and the draw stops after four hundred of them, so a pattern
 broad enough to hide hundreds of recorded paths can also stop the search

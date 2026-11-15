@@ -231,14 +231,15 @@ export def Skipped(path: string): bool
   # plugin/ drops unparsable patterns at startup, but nothing stops a user
   # assigning the variable afterwards, and a throw here would fire at every
   # BufWinEnter.  A broken pattern must cost the filter, never the editor.
-  try
-    for pattern in patterns
+  for pattern in patterns
+    try
       if type(pattern) == v:t_string && !empty(pattern) && path =~# pattern
         return true
       endif
-    endfor
-  catch
-  endtry
+    catch
+      # Ignore this invalid rule, not the valid exclusions that follow it.
+    endtry
+  endfor
   return false
 enddef
 

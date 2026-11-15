@@ -184,6 +184,12 @@ g:simplestartify_skiplist = ['two\.txt$', 'pin\.txt$']
 SimpleStartifyRefresh
 assert_equal([], Paths('dir'))
 assert_equal([THREE], Paths('files'))
+# Runtime updates bypass plugin startup normalization. A malformed rule must
+# not expose oldfiles/bookmarks that a later valid rule still excludes.
+g:simplestartify_skiplist = ['\(', 'two\.txt$', 'pin\.txt$']
+SimpleStartifyRefresh
+assert_equal([], Paths('dir'), 'invalid regex exposed a hidden directory entry')
+assert_equal([THREE], Paths('files'), 'invalid regex exposed a hidden recent file')
 g:simplestartify_skiplist = []
 
 # Per-section header and limit overrides.
