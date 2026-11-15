@@ -277,24 +277,27 @@ def DeleteListedBuffers()
   endfor
 enddef
 
+# Return after finally rather than from every try/catch branch followed by a
+# fallback return: newer Vim9 compilers reject that fallback as unreachable.
+# The explicit result also keeps this compatible with older Vim9 compilers.
 def Snapshot(): string
   var path = tempname() .. '.vim'
   var old_options = &sessionoptions
   var old_session = v:this_session
+  var result = ''
   try
     set sessionoptions-=options
     execute 'silent mksession! ' .. fnameescape(path)
     v:this_session = old_session
-    return path
+    result = path
   catch
     v:this_session = old_session
     delete(path)
     Notify('could not prepare session rollback: ' .. v:exception, true)
-    return ''
   finally
     &sessionoptions = old_options
   endtry
-  return ''
+  return result
 enddef
 
 def EmitUser(name: string)
@@ -433,6 +436,7 @@ def WritePath(path: string): bool
   endif
   var old_options = &sessionoptions
   var old_session = v:this_session
+  var saved = false
   try
     # Hooks run around the whole write, but the extra lines are appended to
     # the temporary before the rename, so a session with saved variables is
@@ -449,16 +453,15 @@ def WritePath(path: string): bool
     endif
     v:this_session = path
     EmitUser('SimpleStartifySessionSavePost')
-    return true
+    saved = true
   catch
     v:this_session = old_session
     delete(temporary)
     Notify('session save failed: ' .. v:exception, true)
-    return false
   finally
     &sessionoptions = old_options
   endtry
-  return false
+  return saved
 enddef
 
 export def Save(bang: bool = false, requested: string = ''): bool
@@ -649,13 +652,14 @@ export def Autoload(): bool
   if getftype(path) !=# 'file' || !filereadable(path)
     return false
   endif
+  var restored = false
   autoloading = true
   try
-    return SourceSession(path, fnamemodify(path, ':t'), false)
+    restored = SourceSession(path, fnamemodify(path, ':t'), false)
   finally
     autoloading = false
   endtry
-  return false
+  return restored
 enddef
 
 export def Delete(bang: bool = false, requested: string = ''): bool
