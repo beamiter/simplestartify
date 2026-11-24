@@ -30,6 +30,7 @@ test-project:
 
 test-mru:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_mru.vim
+	vim -Nu NONE -n -i NONE -es -S tests/vim_mru_concurrent.vim
 
 test-highlight:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_highlight.vim

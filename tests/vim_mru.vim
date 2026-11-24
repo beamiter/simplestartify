@@ -112,10 +112,10 @@ assert_true(simplestartify#mru#Save())
 assert_equal([GAMMA, ALPHA], simplestartify#mru#List())
 
 # A corrupt or hand-edited cache degrades to "fewer entries", never an error.
-# The four malformed lines are dropped and the one valid line is merged in,
-# which is only observable if FromDisk() actually ran.
+# Invalid rows are ignored; retain the two valid existing rows so the next
+# section can exercise Forget on a path that has actually been persisted.
 g:simplestartify_mru_max = 200
-writefile(['nonsense', "0\t" .. GAMMA, "12\trelative/path", "\tleading tab",
+writefile(readfile(CACHE) + ['nonsense', "0\t" .. GAMMA, "12\trelative/path", "\tleading tab",
   (localtime() - 3600) .. "\t" .. DELTA], CACHE)
 assert_true(simplestartify#mru#Save())
 assert_equal([GAMMA, ALPHA, DELTA], simplestartify#mru#List())
@@ -198,15 +198,21 @@ assert_equal(['written by someone else'], readfile(CACHE))
 # not leave the flag set either: it would re-arm on every file opened for the
 # rest of the session, so a read-only home would mean a doomed rewrite every
 # few seconds forever.
-g:simplestartify_mru_file = TEMP .. '/state/not-a-file'
-mkdir(TEMP .. '/state/not-a-file', 'p')
+var before_failure = readfile(CACHE)
+delete(CACHE)
+mkdir(CACHE)
 execute 'edit ' .. fnameescape(GAMMA)
 assert_equal(1, len(timer_info()))
 assert_false(simplestartify#mru#Save())
 assert_equal([], timer_info())
 assert_true(simplestartify#mru#Flush())
 assert_equal([], timer_info())
-g:simplestartify_mru_file = CACHE
+delete(CACHE, 'd')
+writefile(before_failure, CACHE)
+# A failed write does not turn an actual visit into an observation. Retry only
+# when explicitly asked, and verify the outstanding visit can still persist.
+assert_true(simplestartify#mru#Save())
+assert_match('\t' .. escape(GAMMA, '\.'), join(readfile(CACHE), "\n"))
 
 # The cache is read to the cap, and the two files that state a cap agree on it.
 # plugin/ clamps g:simplestartify_mru_max into 0..5000 while the read stopped

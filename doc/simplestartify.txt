@@ -170,11 +170,12 @@ scratch buffers, help, quickfix, terminals and unwritten new files are
 therefore never recorded, and neither is anything inside
 |g:simplestartify_session_dir|.
 
-Saving re-reads the file and merges it, keeping the newer visit per path, so
-several Vim instances sharing one cache do not discard each other's history.
-The write goes to a hidden ".simplestartify-tmp-*" neighbour and is renamed
-into place, exactly like a session write; a partial write can never replace a
-good cache.  A line that does not parse is dropped, so a truncated or
+Saving re-reads the latest file and applies only still-pending visits and
+forget requests from this instance. A clean exit does not write the cache, so
+it cannot undo a forget already saved by another Vim. The write goes to a
+hidden ".simplestartify-tmp-*" neighbour and is renamed into place, exactly
+like a session write. This prevents partial writes, but does not serialize
+simultaneous saves. A line that does not parse is dropped, so a truncated or
 hand-edited cache costs entries rather than raising an error.
 
 This is a cache and it is safe to delete.  Nothing on the dashboard depends on

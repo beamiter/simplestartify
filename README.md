@@ -325,9 +325,11 @@ and, unless `g:simplestartify_mru_persist` is 0, written to
 file recorded since the last write -- a Vim killed with `SIGKILL`, stopped
 with its container or out of battery never reaches `VimLeavePre`, and losing
 the whole session's history to that is the one thing this record exists to
-prevent. Every write re-reads the file first, so a second Vim's work is merged
-rather than overwritten. It is a cache: deleting it costs history and nothing
-else. Missing files and duplicate absolute paths are skipped, and the search
+prevent. When there are local visits or forget requests to save, Vim reads the
+latest cache and applies just those changes. Closing an idle Vim cannot restore
+an entry another Vim removed. Cache writes are atomic replacements, not a lock
+between simultaneous writers. It is a cache: deleting it costs history and
+nothing else. Missing files and duplicate absolute paths are skipped, and the search
 gives up after four hundred recorded paths it rejects -- one that no longer
 exists, or one that `g:simplestartify_skiplist` matches -- so a record full of
 files that have been deleted cannot stall startup. Sessions are ordered newest

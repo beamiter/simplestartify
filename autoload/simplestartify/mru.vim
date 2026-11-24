@@ -16,14 +16,11 @@ var entries: list<dict<any>> = []
 var sequence = 0
 var loaded = false
 
-# Paths the user explicitly forgot during this session.  Removing an entry from
-# `entries` alone is not enough: every merge with the on-disk cache - both the
-# lazy Load() and the re-read Store() performs so a sibling Vim's work is not
-# discarded - would find the path still on disk and put it straight back, so
-# :SimpleStartifyForget would silently undo itself at VimLeavePre.  A merge
-# therefore skips anything listed here, and only re-recording the file (opening
-# it again) clears its tombstone.
-var forgotten: dict<bool> = {}
+# Only outstanding local actions may change the shared cache. Entries read from
+# disk are an observation, not a source of writes: if a sibling removed a path,
+# carrying over the previous snapshot would silently resurrect it on exit.
+# An empty value is a Forget; a later Touch of the same path replaces it.
+var changes: dict<dict<any>> = {}
 
 # The cache used to be written in exactly one place, at VimLeavePre.  Anything
 # that ends Vim without running it - SIGKILL, the OOM killer, `pkill vim`, a
@@ -46,6 +43,8 @@ var pending = 0
 # script-level comparator per comparison - which is far too much to spend on
 # every draw for a file that has usually not changed.
 var disk_stamp = -1
+var disk_path = ''
+var disk_maximum = -1
 
 def Flag(name: string, fallback: number): bool
   var value = get(g:, name, fallback)
@@ -111,8 +110,10 @@ enddef
 def FromDisk(): list<dict<any>>
   var out: list<dict<any>> = []
   var path = File()
+  disk_path = path
+  disk_maximum = Maximum()
+  disk_stamp = -1
   if !Persisting() || !filereadable(path)
-    disk_stamp = -1
     return out
   endif
   # Stamped before the read, never after: a sibling Vim that replaces the file
@@ -122,7 +123,6 @@ def FromDisk(): list<dict<any>>
   # one-second resolution, so a write later in this same second would leave the
   # stored value equal and go unnoticed.
   var stamp = getftime(path)
-  disk_stamp = stamp < localtime() ? stamp : -1
   # One entry per line as "<epoch><TAB><absolute path>".  A line that does not
   # parse is dropped rather than fatal: this is a cache, not a database, and a
   # truncated or hand-edited file must never break the dashboard.
@@ -131,7 +131,7 @@ def FromDisk(): list<dict<any>>
   # for and loses its tail at the next write, more would be read only to be
   # thrown away by Capped().  readfile() reads nothing at a {max} of zero,
   # which is what a cap of zero - "keep none" - asks for anyway.
-  for line in readfile(path, '', Maximum())
+  for line in readfile(path, '', disk_maximum)
     var tab = stridx(line, "\t")
     if tab <= 0
       continue
@@ -141,18 +141,21 @@ def FromDisk(): list<dict<any>>
     if when <= 0 || empty(candidate) || candidate !~# '^\%(/\|[A-Za-z]:[\\/]\)'
       continue
     endif
-    add(out, {path: candidate, time: when, seq: 0})
+    # Preserve persisted order within the same second. A new local touch in
+    # that second still outranks all prior records.
+    add(out, {path: candidate, time: when, seq: -len(out)})
   endfor
+  disk_stamp = stamp < localtime() ? stamp : -1
   return out
 enddef
 
-def Merge(extra: list<dict<any>>)
+def ApplyChanges(disk: list<dict<any>>)
   # Newest wins per path, so a sibling Vim that recorded the same file more
   # recently is respected instead of being overwritten by our stale copy.
   var index: dict<number> = {}
   var merged: list<dict<any>> = []
-  for entry in entries + extra
-    if has_key(forgotten, entry.path)
+  for entry in disk + filter(values(changes), (_, change) => !empty(change))
+    if has_key(changes, entry.path) && empty(changes[entry.path])
       continue
     endif
     if has_key(index, entry.path)
@@ -176,25 +179,22 @@ export def Load()
     return
   endif
   loaded = true
-  Merge(FromDisk())
+  ApplyChanges(FromDisk())
 enddef
 
-# Load() answers "have we ever read the cache"; this answers "has it changed
-# since".  A Vim open all day used to answer every dashboard draw from the list
-# it read once at startup, so a sibling Vim's work stayed invisible to it
-# however long both ran - and now that both of them flush on a timer, there is
-# finally something there to see.  One stat per draw is what turns two records
-# into a shared one.  Tombstones still win - Merge() skips anything in
-# `forgotten` - so a re-read can never undo a :SimpleStartifyForget.
+# Read updates from a sibling when drawing, but do not resubmit an old copy
+# of the cache. The file plus still-pending local actions is the whole view.
 def Sync()
   if !loaded
     Load()
     return
   endif
-  if !Persisting() || getftime(File()) == disk_stamp
+  var path = File()
+  if !Persisting() || (path ==# disk_path && Maximum() == disk_maximum
+        && disk_stamp >= 0 && getftime(path) == disk_stamp)
     return
   endif
-  Merge(FromDisk())
+  ApplyChanges(FromDisk())
 enddef
 
 # Arm the flush window.  Deliberately not re-armed while one is already open:
@@ -276,18 +276,24 @@ enddef
 
 def Record(path: string, when: number)
   Load()
-  # Opening the file again is a deliberate act that outranks the earlier
-  # "forget this": drop the tombstone so the entry can persist normally.
-  if has_key(forgotten, path)
-    remove(forgotten, path)
-  endif
   sequence += 1
   var found = Find(path)
   if found >= 0
     remove(entries, found)
   endif
-  insert(entries, {path: path, time: when, seq: sequence}, 0)
-  entries = Capped(entries)
+  var entry = {path: path, time: when, seq: sequence}
+  insert(entries, entry, 0)
+  changes[path] = entry
+  # A rapid sequence of visits must not queue more additions than can fit.
+  # Keep Forget operations until a successful write, never infer them from
+  # an entry merely falling below this session's limit.
+  var maximum = Maximum()
+  while len(entries) > maximum
+    var evicted = remove(entries, -1).path
+    if has_key(changes, evicted) && !empty(changes[evicted])
+      remove(changes, evicted)
+    endif
+  endwhile
   dirty = true
   Arm()
 enddef
@@ -325,9 +331,8 @@ enddef
 
 export def Forget(requested: string): bool
   # Sync() rather than Load(): a path that only a sibling Vim has recorded is
-  # still a path the user can see on the dashboard and ask to forget, and
-  # without the tombstone that a successful forget leaves, the next merge with
-  # the cache would put it straight back.
+  # still a path the user can see on the dashboard and ask to forget. Track
+  # the request until it is written, not for the whole remaining Vim process.
   Sync()
   if empty(requested)
     return false
@@ -347,7 +352,7 @@ export def Forget(requested: string): bool
   # Only a forget that actually removed something leaves a tombstone, so a
   # mistyped path stays the no-op it reports itself to be.
   if dropped || oldfile
-    forgotten[path] = true
+    changes[path] = {}
     dirty = true
     Arm()
   endif
@@ -365,16 +370,13 @@ export def Count(): number
 enddef
 
 def Store(): bool
-  if !Persisting()
-    return true
-  endif
-  loaded = true
-  # Re-merge on the way out: another Vim may have written the file since we
-  # read it, and a last-writer-wins overwrite would silently discard its work.
-  Merge(FromDisk())
+  # Only local actions are merged onto the latest cache. A clean save never
+  # writes at all; an older instance may keep running across a sibling's
+  # Forget and a later genuine re-open without undoing either at exit.
+  ApplyChanges(FromDisk())
   var path = File()
   if empty(entries) && !filereadable(path)
-    return true
+    return getftype(path) ==# ''
   endif
   var directory = fnamemodify(path, ':h')
   if !isdirectory(directory)
@@ -384,8 +386,12 @@ def Store(): bool
       return false
     endtry
   endif
-  return simplestartify#atomic#Replace(
-    mapnew(entries, (_, entry) => entry.time .. "\t" .. entry.path), path)
+  if !simplestartify#atomic#Replace(
+      mapnew(entries, (_, entry) => entry.time .. "\t" .. entry.path), path)
+    return false
+  endif
+  disk_stamp = -1
+  return true
 enddef
 
 # This runs at VimLeavePre, ahead of the session hook, and from the flush
@@ -403,9 +409,17 @@ export def Save(): bool
     timer_stop(pending)
     pending = 0
   endif
+  var needs_write = dirty || !empty(changes)
   dirty = false
   try
-    return Store()
+    if !needs_write || !Persisting()
+      return true
+    endif
+    if !Store()
+      return false
+    endif
+    changes = {}
+    return true
   catch
     return false
   endtry
