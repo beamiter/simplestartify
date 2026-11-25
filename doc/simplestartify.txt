@@ -675,7 +675,10 @@ Path of the record.  Default "$XDG_STATE_HOME/simplestartify/mru" when
 $XDG_STATE_HOME is set, otherwise "~/.vim/simplestartify-mru".  The containing
 directory is created with mode 0700 when absent.  Setting this to an empty
 string disables persistence in the same way as
-|g:simplestartify_mru_persist|.
+|g:simplestartify_mru_persist|.  Switching the resolved cache path in a
+running Vim starts a separate recent-file record: unflushed visits and
+Forgets are discarded, not carried over to the new cache.  Use an absolute
+path if a change of working directory should keep the same cache.
 
 ==============================================================================
 7. COMMANDS                                         *simplestartify-commands*

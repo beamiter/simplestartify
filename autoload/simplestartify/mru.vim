@@ -15,6 +15,7 @@ vim9script
 var entries: list<dict<any>> = []
 var sequence = 0
 var loaded = false
+var active_file = ''
 
 # Only outstanding local actions may change the shared cache. Entries read from
 # disk are an observation, not a source of writes: if a sibling removed a path,
@@ -85,6 +86,33 @@ export def File(): string
     return ''
   endif
   return fnamemodify(value, ':p')
+enddef
+
+# Treat a new absolute cache path as a new history. A timer armed under
+# one path cannot flush its pending visits or Forgets under another, even
+# when a relative setting only changed meaning after a directory change.
+def EnsureScope()
+  var path = File()
+  # :p adds a slash for an existing directory. A failed write because the
+  # existing cache temporarily is a directory is not a new user scope.
+  if len(path) > 1 && path !~# '^[A-Za-z]:[\\/]$'
+    path = substitute(path, has('win32') ? '[\\/]\+$' : '/\+$', '', '')
+  endif
+  if path ==# active_file
+    return
+  endif
+  if pending != 0
+    timer_stop(pending)
+    pending = 0
+  endif
+  active_file = path
+  entries = []
+  changes = {}
+  hidden_oldfiles = {}
+  dirty = false
+  loaded = false
+  sequence = 0
+  disk_stamp = -1
 enddef
 
 def Persisting(): bool
@@ -222,6 +250,7 @@ enddef
 # Reading the file is deferred until something actually needs the list, so a
 # Vim that never opens the dashboard pays nothing for this feature at startup.
 export def Load()
+  EnsureScope()
   if loaded
     return
   endif
@@ -232,6 +261,7 @@ enddef
 # Read updates from a sibling when drawing, but do not resubmit an old copy
 # of the cache. The file plus still-pending local actions is the whole view.
 def Sync()
+  EnsureScope()
   if !loaded
     Load()
     return
@@ -459,9 +489,11 @@ export def Save(): bool
     timer_stop(pending)
     pending = 0
   endif
-  var needs_write = dirty || !empty(changes)
-  dirty = false
   try
+    # Also check when nothing has drawn or opened since the setting changed.
+    EnsureScope()
+    var needs_write = dirty || !empty(changes)
+    dirty = false
     if !needs_write || !Persisting()
       return true
     endif

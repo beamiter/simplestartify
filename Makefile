@@ -33,6 +33,7 @@ test-mru:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_mru_concurrent.vim
 	vim -Nu NONE -n -i NONE -es -S tests/vim_mru_order.vim
 	vim -Nu NONE -n -i NONE -es -S tests/vim_mru_native_history.vim
+	vim -Nu NONE -n -i NONE -es -S tests/vim_mru_scope.vim
 
 test-highlight:
 	vim -Nu NONE -n -i NONE -es -S tests/vim_highlight.vim
