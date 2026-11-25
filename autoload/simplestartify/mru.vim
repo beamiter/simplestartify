@@ -24,8 +24,8 @@ var changes: dict<dict<any>> = {}
 
 # A session-local filter over Vim's fallback history. Do not edit v:oldfiles:
 # it is shared with other Vim commands/plugins, and writing it cannot remove a
-# mark from viminfo on restart. Only explicitly forgotten fallback paths enter
-# this filter; a real visit restores the path without changing native history.
+# mark from viminfo on restart. Remember all successful Forgets in case native
+# history is reloaded later. A real visit restores the path without changing it.
 var hidden_oldfiles: dict<bool> = {}
 
 # The cache used to be written in exactly one place, at VimLeavePre.  Anything
@@ -366,13 +366,12 @@ export def HiddenOldfile(path: string): bool
   return has_key(hidden_oldfiles, path)
 enddef
 
-def ForgetOldfile(path: string): bool
+def HasVisibleOldfile(path: string): bool
   if HiddenOldfile(path) || !exists('v:oldfiles') || type(v:oldfiles) != v:t_list
     return false
   endif
   for oldfile in v:oldfiles
     if type(oldfile) == v:t_string && !empty(oldfile) && fnamemodify(oldfile, ':p') ==# path
-      hidden_oldfiles[path] = true
       return true
     endif
   endfor
@@ -398,10 +397,11 @@ export def Forget(requested: string): bool
   var before = len(entries)
   filter(entries, (_, entry) => entry.path !=# path)
   var dropped = len(entries) != before
-  var oldfile = ForgetOldfile(path)
+  var oldfile = HasVisibleOldfile(path)
   # Only a forget that actually removed something leaves a tombstone, so a
   # mistyped path stays the no-op it reports itself to be.
   if dropped || oldfile
+    hidden_oldfiles[path] = true
     changes[path] = {}
     dirty = true
     Arm()

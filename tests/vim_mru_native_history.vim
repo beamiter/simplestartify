@@ -1,6 +1,6 @@
 vim9script
 
-# Keep Vim's own recently used files intact. These two real Vim invocations
+# Keep Vim's own recently used files intact. These real Vim invocations
 # share a disposable viminfo, not the runner's history.
 set nocompatible
 set nomore
@@ -28,6 +28,22 @@ def Child(root: string, mode: string)
   if mode ==# 'seed'
     execute 'edit ' .. fnameescape(alpha)
     execute 'edit ' .. fnameescape(beta)
+    return
+  endif
+
+  if mode ==# 'reload'
+    assert_equal([], v:oldfiles, 'this child started without Vim history')
+    execute 'edit ' .. fnameescape(alpha)
+    assert_equal([alpha], simplestartify#mru#List(), 'alpha initially only in plugin MRU')
+    execute 'SimpleStartifyForget ' .. fnameescape(alpha)
+    assert_equal([], simplestartify#mru#List())
+    execute 'rviminfo! ' .. fnameescape(root .. '/history')
+    assert_true(index(v:oldfiles, alpha) >= 0, 'native reload really inserted alpha')
+    var after_reload = Recent()
+    assert_true(index(after_reload, beta) >= 0, 'unrelated native fallback still works')
+    assert_equal(-1, index(after_reload, alpha), 'Vim history reload cannot undo this session’s Forget')
+    execute 'edit ' .. fnameescape(alpha)
+    assert_true(index(Recent(), alpha) >= 0, 'an actual visit restores alpha')
     return
   endif
 
@@ -70,9 +86,10 @@ mkdir(TMP, '', 0o700)
 writefile(['alpha'], TMP .. '/alpha.txt')
 writefile(['beta'], TMP .. '/beta.txt')
 try
-  for mode in ['seed', 'check']
+  for mode in ['seed', 'check', 'reload']
     var log = TMP .. '/child.log'
-    var child = job_start([v:progpath, '-Nu', 'NONE', '-n', '-i', TMP .. '/history',
+    var history = mode ==# 'reload' ? TMP .. '/empty-history' : TMP .. '/history'
+    var child = job_start([v:progpath, '-Nu', 'NONE', '-n', '-i', history,
         '-es', '-S', SCRIPT], {
         env: {SIMPLESTARTIFY_HISTORY_MODE: mode, SIMPLESTARTIFY_HISTORY_DIR: TMP},
         out_io: 'null', err_io: 'file', err_name: log,
