@@ -149,6 +149,47 @@ def FromDisk(): list<dict<any>>
   return out
 enddef
 
+# Most refreshes have no local changes, and a single file visit is a common
+# flush. A plugin-written cache is already in order except for that one key.
+# Check the remaining rows before relying on the ordering: hand-edited rows and
+# duplicate keys can otherwise leave a winner at the wrong position.
+def OrderMerged(merged: list<dict<any>>)
+  if len(changes) > 1
+    sort(merged, Newest)
+    return
+  endif
+  var changed = empty(changes) ? '' : keys(changes)[0]
+  var moved = -1
+  var previous = -1
+  for i in range(len(merged))
+    var current = merged[i]
+    if current.path ==# changed
+      moved = i
+      continue
+    endif
+    if previous >= 0 && Newest(merged[previous], current) > 0
+      sort(merged, Newest)
+      return
+    endif
+    previous = i
+  endfor
+  if moved < 0
+    return
+  endif
+  var entry = remove(merged, moved)
+  var left = 0
+  var right = len(merged)
+  while left < right
+    var mid = (left + right) / 2
+    if Newest(merged[mid], entry) < 0
+      left = mid + 1
+    else
+      right = mid
+    endif
+  endwhile
+  insert(merged, entry, left)
+enddef
+
 def ApplyChanges(disk: list<dict<any>>)
   # Newest wins per path, so a sibling Vim that recorded the same file more
   # recently is respected instead of being overwritten by our stale copy.
@@ -168,7 +209,7 @@ def ApplyChanges(disk: list<dict<any>>)
     index[entry.path] = len(merged)
     add(merged, entry)
   endfor
-  sort(merged, Newest)
+  OrderMerged(merged)
   entries = Capped(merged)
 enddef
 
