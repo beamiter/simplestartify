@@ -345,7 +345,7 @@ first.
 | `:SimpleStartifyNextStyle` | make a new eligible random draw while on the dashboard |
 | `:SimpleStartifyHealth` | open a report of environment, styles, sections, SimpleRemote, recent-file sources and session state, one `[OK]`/`[WARN]`/`[ERROR]` line per fact |
 | `:SimpleStartifyClean` | delete leftover `.simplestartify-tmp-*` files from an interrupted save |
-| `:SimpleStartifyForget [path]` | drop a path from the recent list and from `v:oldfiles`; without an argument, the selected dashboard entry |
+| `:SimpleStartifyForget [path]` | drop a path from the recent list and hide its Vim-history fallback in this instance without changing Vim's native history; without an argument, use the selected dashboard entry |
 | `:Startify` | compatibility alias for `:SimpleStartify` |
 | `:SSave[!] [name]` | save a session; `!` permits replacing an existing name |
 | `:SLoad [name]` | load a named session, or prompt; refuse when listed buffers are modified |

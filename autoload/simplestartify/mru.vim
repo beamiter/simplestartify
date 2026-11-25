@@ -22,6 +22,12 @@ var loaded = false
 # An empty value is a Forget; a later Touch of the same path replaces it.
 var changes: dict<dict<any>> = {}
 
+# A session-local filter over Vim's fallback history. Do not edit v:oldfiles:
+# it is shared with other Vim commands/plugins, and writing it cannot remove a
+# mark from viminfo on restart. Only explicitly forgotten fallback paths enter
+# this filter; a real visit restores the path without changing native history.
+var hidden_oldfiles: dict<bool> = {}
+
 # The cache used to be written in exactly one place, at VimLeavePre.  Anything
 # that ends Vim without running it - SIGKILL, the OOM killer, `pkill vim`, a
 # container torn down, a battery that runs out - therefore threw away the whole
@@ -317,6 +323,9 @@ enddef
 
 def Record(path: string, when: number)
   Load()
+  if has_key(hidden_oldfiles, path)
+    remove(hidden_oldfiles, path)
+  endif
   sequence += 1
   var found = Find(path)
   if found >= 0
@@ -353,21 +362,21 @@ export def Touch()
   Record(path, localtime())
 enddef
 
+export def HiddenOldfile(path: string): bool
+  return has_key(hidden_oldfiles, path)
+enddef
+
 def ForgetOldfile(path: string): bool
-  # v:oldfiles is a plain, writable list, so dropping the entry there too
-  # makes "forget this file" mean what a user expects: it does not reappear on
-  # the next draw, and viminfo carries the removal into the next session.
-  if !exists('v:oldfiles') || type(v:oldfiles) != v:t_list
+  if HiddenOldfile(path) || !exists('v:oldfiles') || type(v:oldfiles) != v:t_list
     return false
   endif
-  var removed = false
-  for index in reverse(range(len(v:oldfiles)))
-    if fnamemodify(v:oldfiles[index], ':p') ==# path
-      remove(v:oldfiles, index)
-      removed = true
+  for oldfile in v:oldfiles
+    if type(oldfile) == v:t_string && !empty(oldfile) && fnamemodify(oldfile, ':p') ==# path
+      hidden_oldfiles[path] = true
+      return true
     endif
   endfor
-  return removed
+  return false
 enddef
 
 export def Forget(requested: string): bool

@@ -100,11 +100,13 @@ def RecentCandidates(): list<string>
   # file opened since then exists only there, and it is by definition more
   # recent than anything viminfo remembers.
   var candidates: list<any> = simplestartify#mru#List()
+  var remaining_live = len(candidates)
   if exists('v:oldfiles') && type(v:oldfiles) == v:t_list
     extend(candidates, v:oldfiles)
   endif
   var rejected = 0
   for candidate in candidates
+    remaining_live -= 1
     if type(candidate) != v:t_string || empty(candidate)
       continue
     endif
@@ -123,7 +125,8 @@ def RecentCandidates(): list<string>
       continue
     endif
     seen[path] = true
-    if simplestartify#mru#Skipped(path) || !filereadable(path)
+    if (remaining_live < 0 && simplestartify#mru#HiddenOldfile(path))
+      || simplestartify#mru#Skipped(path) || !filereadable(path)
       rejected += 1
       if rejected >= CANDIDATE_REJECT
         break
