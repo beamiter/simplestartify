@@ -684,10 +684,10 @@ def Store(): bool
     endif
     disk_stamp = -1
     order_stamp = -1
-    return true
   finally
     delete(lock, 'd')
   endtry
+  return true
 enddef
 
 # This runs at VimLeavePre, ahead of the session hook, and from the flush
@@ -725,12 +725,12 @@ export def Save(): bool
     if ORDERED
       hidden_oldfiles = {}
     endif
-    return true
   catch
     return false
   finally
     saving = false
   endtry
+  return true
 enddef
 
 # The timer's callback, exported because that is also the only way to drive it
