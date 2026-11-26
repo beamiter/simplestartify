@@ -14,14 +14,23 @@ vim9script
 
 var entries: list<dict<any>> = []
 var sequence = 0
+var disk_marks: dict<dict<any>> = {}
+var effective_marks: dict<dict<any>> = {}
+var order_stamp = -1
+var order_ok = true
+var saving = false
 var loaded = false
 var active_file = ''
 
 # Only outstanding local actions may change the shared cache. Entries read from
 # disk are an observation, not a source of writes: if a sibling removed a path,
 # carrying over the previous snapshot would silently resurrect it on exit.
-# An empty value is a Forget; a later Touch of the same path replaces it.
+# Keep the latest operation per path; compare its action time, not flush time.
 var changes: dict<dict<any>> = {}
+# Cap-zero opens still clear a sibling's matching Forget if seen at save.
+# Keep only a short bounded window for opens not known to be revivals yet.
+const ZERO_VISIT_WINDOW = 32
+var zero_visits: list<string> = []
 
 # A session-local filter over Vim's fallback history. Do not edit v:oldfiles:
 # it is shared with other Vim commands/plugins, and writing it cannot remove a
@@ -74,6 +83,26 @@ enddef
 # unbounded read of a corrupt or hand-written file is not something a cache
 # should attempt.
 const CEILING = 5000
+# Marks are never evicted: a viminfo copy or a delayed legacy writer may
+# still have a forgotten path. Stop admitting more durable marks at the cap.
+const MARK_LIMIT = 5000
+const ORDER_HEADER = 'SimpleStartify MRU order 1'
+const ORDERED = exists('*sha256') && exists('*reltimefloat')
+
+def MarkKey(path: string): string
+  return ORDERED ? sha256(path) : path
+enddef
+const ORDER_MAX_BYTES = 64 * 1024 * 1024
+
+def Action(path: string, forget: bool): dict<any>
+  sequence += 1
+  # reltime() provides the finer, shared host clock on supported platforms.
+  # The wall-clock second comes first so the record still orders across boots.
+  var wall = localtime()
+  var tick = exists('*reltimefloat') ? float2nr(reltimefloat(reltime()) * 1000000.0) : 0
+  return {path: path, time: wall, tick: tick, pid: getpid(), seq: sequence,
+    forget: forget, keep: !forget && Maximum() > 0}
+enddef
 
 def Maximum(): number
   var value = get(g:, 'simplestartify_mru_max', 200)
@@ -108,25 +137,41 @@ def EnsureScope()
   active_file = path
   entries = []
   changes = {}
+  zero_visits = []
   hidden_oldfiles = {}
   dirty = false
   loaded = false
   sequence = 0
   disk_stamp = -1
+  order_stamp = -1
+  order_ok = true
+  disk_marks = {}
+  effective_marks = {}
 enddef
 
 def Persisting(): bool
   return Flag('simplestartify_mru_persist', 1) && !empty(File())
 enddef
 
-def Newest(left: dict<any>, right: dict<any>): number
+def CompareAction(left: dict<any>, right: dict<any>): number
   if left.time != right.time
     return left.time > right.time ? -1 : 1
+  endif
+  if left.tick != right.tick
+    return left.tick > right.tick ? -1 : 1
+  endif
+  if left.pid != right.pid
+    return left.pid > right.pid ? -1 : 1
   endif
   if left.seq != right.seq
     return left.seq > right.seq ? -1 : 1
   endif
-  return left.path ==# right.path ? 0 : (left.path <# right.path ? -1 : 1)
+  return 0
+enddef
+
+def Newest(left: dict<any>, right: dict<any>): number
+  var order = CompareAction(left, right)
+  return order != 0 ? order : (left.path ==# right.path ? 0 : (left.path <# right.path ? -1 : 1))
 enddef
 
 def Capped(items: list<dict<any>>): list<dict<any>>
@@ -141,7 +186,7 @@ def Capped(items: list<dict<any>>): list<dict<any>>
   return len(items) > maximum ? items[0 : maximum - 1] : items
 enddef
 
-def FromDisk(): list<dict<any>>
+def LegacyRows(): list<dict<any>>
   var out: list<dict<any>> = []
   var path = File()
   disk_path = path
@@ -177,10 +222,84 @@ def FromDisk(): list<dict<any>>
     endif
     # Preserve persisted order within the same second. A new local touch in
     # that second still outranks all prior records.
-    add(out, {path: candidate, time: when, seq: -len(out)})
+    add(out, {path: candidate, time: when, tick: 0, pid: 0, seq: -len(out), forget: false, keep: true})
   endfor
   disk_stamp = stamp < localtime() ? stamp : -1
   return out
+enddef
+
+# Preserve the original cache as a compatibility projection. The sidecar
+# survives an older Vim rewriting that cache; its ordered rows can restore a
+# genuine re-open, and its tombstones hide stale native history as well.
+def FromDisk(): list<dict<any>>
+  var rows = LegacyRows()
+  order_stamp = -1
+  order_ok = true
+  disk_marks = {}
+  if !Persisting() || !ORDERED
+    order_stamp = -2
+    return rows
+  endif
+  var sidecar = active_file .. '.order'
+  var kind = getftype(sidecar)
+  if empty(kind)
+    order_stamp = -2
+    return rows
+  endif
+  if kind !=# 'file' || getfsize(sidecar) > ORDER_MAX_BYTES
+    order_ok = false
+    return rows
+  endif
+  var stamp = getftime(sidecar)
+  var lines = readfile(sidecar, '', 2 + CEILING + MARK_LIMIT)
+  if empty(lines) || lines[0] !=# ORDER_HEADER || len(lines) > 1 + CEILING + MARK_LIMIT
+    order_ok = false
+    return rows
+  endif
+  var saved: list<dict<any>> = []
+  var restored_marks: dict<dict<any>> = {}
+  for line in lines[1 :]
+    var fields = split(line, "\t", true)
+    if len(fields) != 6 || fields[0] !~# '^[RBF]$'
+        || fields[1] !~# '^\d\+$' || fields[2] !~# '^\d\+$'
+        || fields[3] !~# '^\d\+$' || fields[4] !~# '^-\?\d\+$'
+        || (fields[0] ==# 'R' ? fields[5] !~# '^\%(/\|[A-Za-z]:[\\/]\)'
+          : fields[5] !~# '^[0-9a-f]\{64}$')
+      order_ok = false
+      return rows
+    endif
+    var op = {path: fields[0] ==# 'R' ? fields[5] : '', time: str2nr(fields[1]), tick: str2nr(fields[2]),
+      pid: str2nr(fields[3]), seq: str2nr(fields[4]), forget: fields[0] ==# 'F',
+      keep: fields[0] ==# 'R'}
+    if op.time <= 0 || (fields[0] !=# 'R' && has_key(restored_marks, fields[5]))
+      order_ok = false
+      return rows
+    endif
+    if fields[0] ==# 'R'
+      add(saved, op)
+    else
+      restored_marks[fields[5]] = op
+    endif
+  endfor
+  if len(saved) > CEILING || len(restored_marks) > MARK_LIMIT
+    order_ok = false
+    return rows
+  endif
+  order_stamp = stamp < localtime() ? stamp : -1
+  disk_marks = restored_marks
+  # The ordered rows can recover entries erased by a delayed older writer.
+  # Import unrelated legacy visits as well; they have no precise action time.
+  return saved + rows
+enddef
+
+def OrderCurrent(): bool
+  var sidecar = active_file .. '.order'
+  return !ORDERED || (order_stamp == -2 ? empty(getftype(sidecar))
+    : order_stamp >= 0 && getftime(sidecar) == order_stamp)
+enddef
+
+def Encode(op: dict<any>, kind: string, key: string): string
+  return join([kind, op.time, op.tick, op.pid, op.seq, key], "\t")
 enddef
 
 # Most refreshes have no local changes, and a single file visit is a common
@@ -225,12 +344,37 @@ def OrderMerged(merged: list<dict<any>>)
 enddef
 
 def ApplyChanges(disk: list<dict<any>>)
-  # Newest wins per path, so a sibling Vim that recorded the same file more
-  # recently is respected instead of being overwritten by our stale copy.
   var index: dict<number> = {}
   var merged: list<dict<any>> = []
-  for entry in disk + filter(values(changes), (_, change) => !empty(change))
-    if has_key(changes, entry.path) && empty(changes[entry.path])
+  effective_marks = copy(disk_marks)
+  for op in values(changes)
+    var key = MarkKey(op.path)
+    if op.forget || has_key(disk_marks, key)
+      var old = get(effective_marks, key, {})
+      if empty(old) || CompareAction(op, old) < 0
+        effective_marks[key] = op
+      endif
+    endif
+  endfor
+  # A recent recorded visit can predate the *write* of a competing Forget
+  # even when it followed the user's action. Recover that ordering from its
+  # sidecar timestamp rather than requiring the visit to have seen a mark.
+  if !empty(effective_marks)
+    for entry in disk
+      if !entry.forget && entry.pid != 0
+        var key = MarkKey(entry.path)
+        if has_key(effective_marks, key) && CompareAction(entry, effective_marks[key]) < 0
+          effective_marks[key] = entry
+        endif
+      endif
+    endfor
+  endif
+  for entry in disk + values(changes)
+    var mark = empty(effective_marks) ? {} : get(effective_marks, MarkKey(entry.path), {})
+    # An older Vim's rows carry no action order and cannot clear a mark or
+    # revive a row evicted by the cap. Its unrelated visits still import.
+    if entry.forget || !entry.keep || (!empty(mark)
+        && (mark.forget || entry.pid == 0 || CompareAction(entry, mark) > 0))
       continue
     endif
     if has_key(index, entry.path)
@@ -268,7 +412,7 @@ def Sync()
   endif
   var path = File()
   if !Persisting() || (path ==# disk_path && Maximum() == disk_maximum
-        && disk_stamp >= 0 && getftime(path) == disk_stamp)
+        && disk_stamp >= 0 && getftime(path) == disk_stamp && OrderCurrent())
     return
   endif
   ApplyChanges(FromDisk())
@@ -351,17 +495,22 @@ def Find(path: string): number
   return -1
 enddef
 
-def Record(path: string, when: number)
+def Record(path: string)
   Load()
   if has_key(hidden_oldfiles, path)
     remove(hidden_oldfiles, path)
   endif
-  sequence += 1
+  var key = empty(effective_marks) ? '' : MarkKey(path)
+  var preserving_mark = has_key(effective_marks, key) ||
+    (has_key(changes, path) && changes[path].forget)
   var found = Find(path)
   if found >= 0
     remove(entries, found)
   endif
-  var entry = {path: path, time: when, seq: sequence}
+  var entry = Action(path, false)
+  if preserving_mark
+    effective_marks[empty(key) ? MarkKey(path) : key] = entry
+  endif
   insert(entries, entry, 0)
   changes[path] = entry
   # A rapid sequence of visits must not queue more additions than can fit.
@@ -370,8 +519,26 @@ def Record(path: string, when: number)
   var maximum = Maximum()
   while len(entries) > maximum
     var evicted = remove(entries, -1).path
-    if has_key(changes, evicted) && !empty(changes[evicted])
-      remove(changes, evicted)
+    if has_key(changes, evicted) && !changes[evicted].forget
+      if has_key(effective_marks, MarkKey(evicted))
+        changes[evicted].keep = false
+      elseif maximum == 0 && evicted ==# path && Persisting()
+        var previous = index(zero_visits, path)
+        if previous >= 0
+          remove(zero_visits, previous)
+        endif
+        add(zero_visits, path)
+        changes[path].keep = false
+        if len(zero_visits) > ZERO_VISIT_WINDOW
+          var oldest = remove(zero_visits, 0)
+          if has_key(changes, oldest) && !changes[oldest].forget && !changes[oldest].keep
+              && !has_key(effective_marks, MarkKey(oldest))
+            remove(changes, oldest)
+          endif
+        endif
+      else
+        remove(changes, evicted)
+      endif
     endif
   endwhile
   dirty = true
@@ -389,11 +556,12 @@ export def Touch()
   if Skip(path) || !filereadable(path)
     return
   endif
-  Record(path, localtime())
+  Record(path)
 enddef
 
 export def HiddenOldfile(path: string): bool
-  return has_key(hidden_oldfiles, path)
+  var mark = empty(effective_marks) ? {} : get(effective_marks, MarkKey(path), {})
+  return !empty(mark) ? mark.forget : has_key(hidden_oldfiles, path)
 enddef
 
 def HasVisibleOldfile(path: string): bool
@@ -424,15 +592,20 @@ export def Forget(requested: string): bool
   # Touch() store what expand('%:p') gave them, verbatim; fnamemodify(':p')
   # resolves '~' and relative names and matches that.
   var path = fnamemodify(requested, ':p')
-  var before = len(entries)
-  filter(entries, (_, entry) => entry.path !=# path)
-  var dropped = len(entries) != before
+  var dropped = Find(path) >= 0
   var oldfile = HasVisibleOldfile(path)
   # Only a forget that actually removed something leaves a tombstone, so a
   # mistyped path stays the no-op it reports itself to be.
   if dropped || oldfile
+    var key = MarkKey(path)
+    if Persisting() && ORDERED && !has_key(effective_marks, key) && len(effective_marks) >= MARK_LIMIT
+      return false
+    endif
+    filter(entries, (_, entry) => entry.path !=# path)
     hidden_oldfiles[path] = true
-    changes[path] = {}
+    var op = Action(path, true)
+    changes[path] = op
+    effective_marks[key] = op
     dirty = true
     Arm()
   endif
@@ -450,34 +623,80 @@ export def Count(): number
 enddef
 
 def Store(): bool
-  # Only local actions are merged onto the latest cache. A clean save never
-  # writes at all; an older instance may keep running across a sibling's
-  # Forget and a later genuine re-open without undoing either at exit.
-  ApplyChanges(FromDisk())
-  var path = File()
-  if empty(entries) && !filereadable(path)
-    return getftype(path) ==# ''
-  endif
+  var path = active_file
   var directory = fnamemodify(path, ':h')
   if !isdirectory(directory)
+    # Another writer may have created the directory after the check.
     try
       mkdir(directory, 'p', 0o700)
-    catch
-      return false
+    catch /^Vim\%((\a\+)\)\=:E739:/
+      if !isdirectory(directory)
+        return false
+      endif
     endtry
   endif
-  if !simplestartify#atomic#Replace(
-      mapnew(entries, (_, entry) => entry.time .. "\t" .. entry.path), path)
+  var lock = path .. '.order.lock'
+  # Only a timer or exit save acquires the lock, never a file-open hook.
+  # Give a concurrent writer a short window, but never steal its lock.
+  var locked = false
+  for attempt in range(26)
+    if empty(getftype(lock))
+      try
+        locked = mkdir(lock, '', 0o700) == 1
+      catch /^Vim\%((\a\+)\)\=:E739:/
+        # Another process won the mkdir race; try again.
+      endtry
+      if locked
+        break
+      endif
+    endif
+    if attempt < 25
+      sleep 10m
+    endif
+  endfor
+  if !locked
     return false
   endif
-  disk_stamp = -1
-  return true
+  try
+    EnsureScope()
+    if path !=# active_file
+      return false
+    endif
+    ApplyChanges(FromDisk())
+    var legacy_kind = getftype(path)
+    if !order_ok || (!empty(legacy_kind) && legacy_kind !=# 'file')
+        || len(effective_marks) > MARK_LIMIT
+      return false
+    endif
+    if empty(entries) && empty(effective_marks) && empty(legacy_kind)
+      return true
+    endif
+    var lines = [ORDER_HEADER]
+    extend(lines, mapnew(entries, (_, entry) => Encode(entry, 'R', entry.path)))
+    for [key, mark] in items(effective_marks)
+      add(lines, Encode(mark, mark.forget ? 'F' : 'B', key))
+    endfor
+    # Publish the authoritative state first. If updating the old projection
+    # fails, retry without losing the operation or clobbering an invalid path.
+    if (ORDERED && !simplestartify#atomic#Replace(lines, path .. '.order'))
+        || !simplestartify#atomic#Replace(mapnew(entries, (_, entry) => entry.time .. "\t" .. entry.path), path)
+      return false
+    endif
+    disk_stamp = -1
+    order_stamp = -1
+    return true
+  finally
+    delete(lock, 'd')
+  endtry
 enddef
 
 # This runs at VimLeavePre, ahead of the session hook, and from the flush
 # timer.  A cache is never worth aborting a quit or costing the user their
 # session, so nothing here is allowed to escape as an error.
 export def Save(): bool
+  if saving
+    return false
+  endif
   # Whatever the write does below, this flush window is over.  The flag is
   # cleared before the attempt rather than after a success on purpose: a write
   # that cannot work - a full disk, a read-only home, a cache path that is now
@@ -497,13 +716,20 @@ export def Save(): bool
     if !needs_write || !Persisting()
       return true
     endif
+    saving = true
     if !Store()
       return false
     endif
     changes = {}
+    zero_visits = []
+    if ORDERED
+      hidden_oldfiles = {}
+    endif
     return true
   catch
     return false
+  finally
+    saving = false
   endtry
 enddef
 

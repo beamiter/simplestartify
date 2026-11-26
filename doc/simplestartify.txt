@@ -170,16 +170,29 @@ scratch buffers, help, quickfix, terminals and unwritten new files are
 therefore never recorded, and neither is anything inside
 |g:simplestartify_session_dir|.
 
-Saving re-reads the latest file and applies only still-pending visits and
-forget requests from this instance. A clean exit does not write the cache, so
-it cannot undo a forget already saved by another Vim. The write goes to a
-hidden ".simplestartify-tmp-*" neighbour and is renamed into place, exactly
-like a session write. This prevents partial writes, but does not serialize
-simultaneous saves. A line that does not parse is dropped, so a truncated or
-hand-edited cache costs entries rather than raising an error.
+Saving takes a short per-cache write lock, re-reads the latest record, and
+applies this instance's pending actions. Updated Vims sharing the same cache
+on one machine order visits and forgets by when they happened, not by when
+a timer fires or a Vim exits. Both files use atomic replacement. A clean
+exit does not write, and opening or writing a file does not take the lock.
 
-This is a cache and it is safe to delete.  Nothing on the dashboard depends on
-it existing, and |g:simplestartify_mru_persist| turns it off entirely.
+The companion '<cache>.order' stores the more precise recent-file order and
+bounded suppression records separately from the original text cache. A
+successfully saved Forget suppresses the dashboard's viminfo fallback too,
+without changing |v:oldfiles|. A newer visit restores the entry. At most
+5000 different forgotten/reopened keys are kept; a new Forget beyond that
+limit is refused rather than dropping an existing suppression. Vim builds
+without SHA-256 or fine-grained timing keep Forget session-local. Older
+plugin versions still read the original text cache, but do not honour or
+clear the companion record. Their old cache rewrites cannot erase it.
+
+If the compatibility file cannot be updated after the companion was saved,
+the action is retained for retry. A damaged or unrecognized companion
+file is not overwritten. If an interrupted writer leaves
+'<cache>.order.lock', close all Vims using the cache before removing that
+empty directory. The plugin does not steal locks. To reset this cache and
+its forget records, delete both the cache and '<cache>.order' while all
+using Vims are closed. |g:simplestartify_mru_persist| disables disk access.
 
 ==============================================================================
 5a. SECTIONS                                        *simplestartify-sections*
@@ -776,14 +789,14 @@ been recorded yet, not because of a failure.
 
                                                   *:SimpleStartifyForget*
 :SimpleStartifyForget [path]
-        Remove [path] from the recent-files record and from |v:oldfiles|, so
-        it does not come back on the next draw.  Without [path], forget the
-        recent file selected on the dashboard; this is what the "D" mapping
-        does.  A path that was not listed reports an error instead of
-        silently succeeding.  The removal also survives every cache write,
-        each of which re-reads the cache before rewriting it: a forgotten path
-        is never merged back in, and only opening the file again records it
-        once more.  [path] is a file name and not an expression: only "~" and
+        Remove [path] from the recent-files dashboard, including its fallback
+        to Vim history, without editing |v:oldfiles|. Without [path], forget
+        the selected recent file; this is what the "D" mapping does. An
+        unlisted path or exhausted suppression budget reports an error.
+        With persistence active, a successfully saved Forget also applies
+        in other updated Vims. A later eligible file visit or successful
+        write records the file again. [path] is a file name, not an
+        expression: only "~" and
         relative names are resolved, so a file whose name contains "$VAR", a
         wildcard or backticks is matched exactly as it is called.  See
         |simplestartify-recent|.

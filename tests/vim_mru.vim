@@ -219,6 +219,11 @@ assert_match('\t' .. escape(GAMMA, '\.'), join(readfile(CACHE), "\n"))
 # at 4096 lines, so every value in 4097..5000 was unreachable - and, because
 # Save() rewrites whatever the read returned, the tail past 4096 was destroyed
 # on the way out rather than merely ignored.
+# A fresh legacy file has no ordering sidecar from the earlier Forget/revisit
+# scenarios. Exercise migration of an old cache here rather than overwriting
+# the compatibility projection of an unrelated active history.
+const LARGE_CACHE = TEMP .. '/large-mru'
+g:simplestartify_mru_file = LARGE_CACHE
 g:simplestartify_mru_max = 0
 assert_equal([], simplestartify#mru#List())
 g:simplestartify_mru_max = 4500
@@ -227,11 +232,11 @@ var many: list<string> = []
 for index in range(4500)
   add(many, (stamp - index) .. "\t" .. TEMP .. '/deep/file-' .. index .. '.txt')
 endfor
-writefile(many, CACHE)
+writefile(many, LARGE_CACHE)
 assert_equal(4500, simplestartify#mru#Count())
 assert_equal(TEMP .. '/deep/file-4499.txt', simplestartify#mru#List()[-1])
 assert_true(simplestartify#mru#Save())
-assert_equal(4500, len(readfile(CACHE)))
+assert_equal(4500, len(readfile(LARGE_CACHE)))
 
 # And the ceiling is the same 5000 on both sides.  A value assigned after
 # startup never passes through plugin/, so this file has to hold the line on
@@ -244,9 +249,10 @@ g:simplestartify_mru_max = 9000
 for index in range(4500, 5099)
   add(many, (stamp - index) .. "\t" .. TEMP .. '/deep/file-' .. index .. '.txt')
 endfor
-writefile(many, CACHE)
+writefile(many, LARGE_CACHE)
 assert_equal(5000, simplestartify#mru#Count())
 g:simplestartify_mru_max = 200
+g:simplestartify_mru_file = CACHE
 
 # A recorded path is data, never an expression.  expand() is a wildcard,
 # environment-variable, %/#-special *and* backtick expander rather than a path

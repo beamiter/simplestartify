@@ -4,6 +4,10 @@ All notable changes to SimpleStartify are documented here.
 
 ## Unreleased
 
+- Persist dashboard-only Forget decisions across Vim restarts and resolve
+  competing visits by action time rather than save order. Concurrent updated
+  instances serialize cache saves so unrelated visits are not dropped.
+
 - 启动后把 `g:simplestartify_lists` 写成文档里的字符串形式（`['files', 'special']`）不再被当成空配置退回默认牌组；书签和命令的字符串写法同样在运行时生效。
 - 绘制仪表盘时不再用 `expand()` 去解析会话目录、最近文件缓存路径和书签路径，带反引号的名字不会再进 shell。
 - `v:oldfiles` 里一长串 `remote://` 不再被 `:p` 展开后占满拒绝预算，把真正的本地文件挤出最近列表。

@@ -326,10 +326,13 @@ file recorded since the last write -- a Vim killed with `SIGKILL`, stopped
 with its container or out of battery never reaches `VimLeavePre`, and losing
 the whole session's history to that is the one thing this record exists to
 prevent. When there are local visits or forget requests to save, Vim reads the
-latest cache and applies just those changes. Closing an idle Vim cannot restore
-an entry another Vim removed. Cache writes are atomic replacements, not a lock
-between simultaneous writers. It is a cache: deleting it costs history and
-nothing else. Missing files and duplicate absolute paths are skipped, and the search
+latest cache under a per-cache write lock and applies just those changes.
+Updated Vims on one machine resolve Forget and later visits by action order,
+not exit order. A companion `.order` file keeps that ordering and hashed
+Forget keys without changing Vim's own history. With all Vim instances closed,
+remove both files to reset this cache. If an interrupted save leaves an empty
+`.order.lock` directory, remove it only after closing every Vim using that cache.
+Missing files and duplicate absolute paths are skipped, and the search
 gives up after four hundred recorded paths it rejects -- one that no longer
 exists, or one that `g:simplestartify_skiplist` matches -- so a record full of
 files that have been deleted cannot stall startup. Sessions are ordered newest
